@@ -268,6 +268,7 @@ static void PortedOriginalRefreshesContinueFromSelectedSlotEveryFrame()
     AssertTrue(slotsManager.Contains("private void LateUpdate()") && slotsManager.Contains("RefreshContinueButtonFromSelectedSlot();"), "Continue visibility must be corrected every Unity frame after menu scripts can change it");
     AssertTrue(slotsManager.Contains("ShouldShowContinueForSelectedSlot") && slotsManager.Contains("Path.Combine(SaveSlotsFolder, CurrentSaveLoadedName())"), "Continue visibility should be based on selected slot savefile.txt, not only active folder state");
     AssertTrue(slotsManager.Contains("SetContinueVisible(ShouldShowContinueForSelectedSlot())"), "per-frame Continue refresh should only set visibility from selected slot state");
+    AssertFalse(slotsManager.Contains("if (continueRefreshEnabled == enabled)"), "SetContinueRefreshEnabled(true) must refresh every call because SlotsManager can live on an inactive canvas");
     var refreshStart = slotsManager.IndexOf("internal void RefreshContinueButtonFromSelectedSlot()", StringComparison.Ordinal);
     var refreshEnd = slotsManager.IndexOf("private bool ShouldShowContinueForSelectedSlot()", StringComparison.Ordinal);
     AssertTrue(refreshStart >= 0 && refreshEnd > refreshStart, "decompiled SlotsManager should contain RefreshContinueButtonFromSelectedSlot body");

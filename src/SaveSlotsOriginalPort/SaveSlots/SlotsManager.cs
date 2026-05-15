@@ -152,19 +152,17 @@ internal class SlotsManager : MonoBehaviour
 		{
 			return;
 		}
-		if (continueRefreshEnabled == enabled)
+		if (!enabled)
 		{
+			if (continueRefreshEnabled)
+			{
+				HideContinueButton();
+			}
+			continueRefreshEnabled = false;
 			return;
 		}
-		continueRefreshEnabled = enabled;
-		if (enabled)
-		{
-			RefreshContinueButtonFromSelectedSlot();
-		}
-		else
-		{
-			HideContinueButton();
-		}
+		continueRefreshEnabled = true;
+		RefreshContinueButtonFromSelectedSlot();
 	}
 
 	internal void Add(SlotBehaviour slotBehaviour)
