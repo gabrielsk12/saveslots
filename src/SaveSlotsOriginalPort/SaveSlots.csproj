@@ -1,0 +1,45 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>SaveSlots</AssemblyName>
+    <GenerateAssemblyInfo>False</GenerateAssemblyInfo>
+    <GenerateTargetFrameworkAttribute>False</GenerateTargetFrameworkAttribute>
+    <TargetFramework>net35</TargetFramework>
+    <OutputPath>..\..\dist\</OutputPath>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <MWCManagedDir Condition="'$(MWCManagedDir)' == ''">I:\SteamLibrary\steamapps\common\My Winter Car\mywintercar_Data\Managed</MWCManagedDir>
+  </PropertyGroup>
+  <PropertyGroup>
+    <LangVersion>7.3</LangVersion>
+    <AllowUnsafeBlocks>False</AllowUnsafeBlocks>
+  </PropertyGroup>
+  <PropertyGroup>
+    <RootNamespace />
+  </PropertyGroup>
+  <ItemGroup />
+  <ItemGroup>
+    <EmbeddedResource Remove="SaveSlots.Properties.Resources.resx" />
+    <EmbeddedResource Include="SaveSlots.Properties.Resources.resources">
+      <LogicalName>SaveSlots.Properties.Resources.resources</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+  <ItemGroup>
+    <Reference Include="System.Core" />
+    <Reference Include="System.Xml" />
+    <Reference Include="UnityEngine">
+      <HintPath>$(MWCManagedDir)\UnityEngine.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="MSCLoader">
+      <HintPath>$(MWCManagedDir)\MSCLoader.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.UI">
+      <HintPath>$(MWCManagedDir)\UnityEngine.UI.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="ES2">
+      <HintPath>$(MWCManagedDir)\ES2.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+</Project>

@@ -1,0 +1,11 @@
+bin/
+obj/
+dist/
+release/
+.refs/
+*.user
+*.suo
+*.tmp
+*.log
+*.zip
+NEXUS_README.txt

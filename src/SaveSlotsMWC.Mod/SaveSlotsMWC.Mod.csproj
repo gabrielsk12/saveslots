@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net35</TargetFramework>
+    <AssemblyName>SaveSlotsMWC</AssemblyName>
+    <OutputType>Library</OutputType>
+    <LangVersion>7.3</LangVersion>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <GenerateTargetFrameworkAttribute>false</GenerateTargetFrameworkAttribute>
+    <Deterministic>false</Deterministic>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <OutputPath>..\..\dist\</OutputPath>
+    <NoWarn>$(NoWarn);CS1701;CS1702</NoWarn>
+    <MWCManagedDir Condition="'$(MWCManagedDir)' == ''">I:\SteamLibrary\steamapps\common\My Winter Car\mywintercar_Data\Managed</MWCManagedDir>
+    <ReferencePath>$(MWCManagedDir)</ReferencePath>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\SaveSlotsMWC.Core\SaveSlotManager.cs" Link="Core\SaveSlotManager.cs" />
+    <Compile Include="..\SaveSlotsMWC.Core\SaveSlotMetadata.cs" Link="Core\SaveSlotMetadata.cs" />
+    <Compile Include="..\SaveSlotsMWC.Core\SaveSlotMetadataStore.cs" Link="Core\SaveSlotMetadataStore.cs" />
+    <Compile Include="..\SaveSlotsMWC.Core\SaveSlotOptions.cs" Link="Core\SaveSlotOptions.cs" />
+    <Compile Include="..\SaveSlotsMWC.Core\SaveSlotSwitchResult.cs" Link="Core\SaveSlotSwitchResult.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <Reference Include="MSCLoader">
+      <HintPath>$(MWCManagedDir)\MSCLoader.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine">
+      <HintPath>$(MWCManagedDir)\UnityEngine.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+</Project>
