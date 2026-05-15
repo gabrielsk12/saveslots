@@ -106,6 +106,7 @@ internal class SlotsManager : MonoBehaviour
 		}
 		GameObject interfaceObject = GameObject.Find("Interface");
 		buttonContinue = LocateContinueButton(interfaceObject);
+		SyncContinueButtonToActiveSave();
 		GameObject licence = Resources.FindObjectsOfTypeAll<GameObject>().FirstOrDefault((GameObject g) => ((UnityObject)g).name == "Licence");
 		if ((UnityObject)(object)licence != (UnityObject)null && (UnityObject)(object)licence.GetComponent<SaveSlotsLicenceBehaviour>() == (UnityObject)null)
 		{
@@ -498,6 +499,11 @@ internal class SlotsManager : MonoBehaviour
 		SetContinueVisible(visible);
 	}
 
+	internal void SyncContinueButtonToActiveSave()
+	{
+		SetContinueVisible(HasPlayableSave(Application.persistentDataPath));
+	}
+
 	internal void HideContinueButton()
 	{
 		SetContinueVisible(false);
@@ -505,21 +511,49 @@ internal class SlotsManager : MonoBehaviour
 
 	private void SetContinueVisible(bool visible)
 	{
-		FindContinueButton();
-		if ((UnityObject)(object)buttonContinue != (UnityObject)null)
+		List<GameObject> continueButtons = FindContinueButtons();
+		foreach (GameObject continueButton in continueButtons)
 		{
-			buttonContinue.SetActive(visible);
+			continueButton.SetActive(visible);
 		}
 	}
 
 	private void FindContinueButton()
 	{
-		if ((UnityObject)(object)buttonContinue != (UnityObject)null && (UnityObject)(object)buttonContinue.GetComponent<Button>() != (UnityObject)null)
+		List<GameObject> continueButtons = FindContinueButtons();
+		buttonContinue = continueButtons.Count > 0 ? continueButtons[0] : null;
+	}
+
+	private List<GameObject> FindContinueButtons()
+	{
+		List<GameObject> continueButtons = new List<GameObject>();
+		GameObject interfaceObject = GameObject.Find("Interface");
+		AddContinueCandidate(continueButtons, LocateContinueButton(interfaceObject));
+		if ((UnityObject)(object)interfaceObject == (UnityObject)null)
+		{
+			return continueButtons;
+		}
+		Button[] buttons = interfaceObject.GetComponentsInChildren<Button>(true);
+		foreach (Button button in buttons)
+		{
+			GameObject buttonObject = ((Component)button).gameObject;
+			string searchText = GetButtonSearchText(buttonObject);
+			if (searchText.Contains("BUTTONCONTINUE") || searchText.Contains("CONTINUE") || searchText.Contains("POKRA"))
+			{
+				AddContinueCandidate(continueButtons, buttonObject);
+			}
+		}
+		buttonContinue = continueButtons.Count > 0 ? continueButtons[0] : null;
+		return continueButtons;
+	}
+
+	private void AddContinueCandidate(List<GameObject> continueButtons, GameObject candidate)
+	{
+		if ((UnityObject)(object)candidate == (UnityObject)null || continueButtons.Contains(candidate))
 		{
 			return;
 		}
-		GameObject interfaceObject = GameObject.Find("Interface");
-		buttonContinue = LocateContinueButton(interfaceObject);
+		continueButtons.Add(candidate);
 	}
 
 	private GameObject LocateContinueButton(GameObject interfaceObject)
@@ -631,6 +665,15 @@ internal class SlotsManager : MonoBehaviour
 	public GameObject Canvas()
 	{
 		return ((Component)((Component)this).transform.root).gameObject;
+	}
+
+	internal void HideSaveSlotsCanvasForPrompt()
+	{
+		GameObject canvas = Canvas();
+		if ((UnityObject)(object)canvas != (UnityObject)null)
+		{
+			canvas.SetActive(false);
+		}
 	}
 
 	private void OnApplicationFocus(bool hasFocus)

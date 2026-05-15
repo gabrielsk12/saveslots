@@ -254,11 +254,19 @@ public class SaveSlots : Mod
 			{
 				saveSlotsCanvas.SetActive(false);
 			}
+			if (SlotsManager.Instance != null)
+			{
+				SlotsManager.Instance.HideContinueButton();
+			}
 			if ((UnityObject)(object)saveSlotsRaycaster != (UnityObject)null)
 			{
 				saveSlotsRaycaster.enabled = false;
 			}
 			return;
+		}
+		if (SlotsManager.Instance != null)
+		{
+			SlotsManager.Instance.SyncContinueButtonToActiveSave();
 		}
 		bool flag = IsModLoaderMenuOpen();
 		if (!saveSlotsCanvas.activeSelf)
@@ -426,6 +434,10 @@ public class SaveSlots : Mod
 	public void OnLoad()
 	{
 		gameLoaded = true;
+		if (SlotsManager.Instance != null)
+		{
+			SlotsManager.Instance.HideContinueButton();
+		}
 		if ((UnityObject)(object)saveSlotsCanvas != (UnityObject)null)
 		{
 			saveSlotsCanvas.SetActive(false);

@@ -14,6 +14,7 @@ var tests = new List<(string Name, Action Body)>
     ("ported original reads My Winter Car save metadata", PortedOriginalReadsMyWinterCarSaveMetadata),
     ("ported original switches saves without auto-loading", PortedOriginalSwitchesSavesWithoutAutoLoading),
     ("ported original hides Continue for empty saves and loading", PortedOriginalHidesContinueForEmptySavesAndLoading),
+    ("ported original keeps delete confirmation above save UI", PortedOriginalKeepsDeleteConfirmationAboveSaveUi),
     ("ported original applies MWC blue save slot theme", PortedOriginalAppliesBlueTheme),
     ("ported original save slot UI remains visible and avoids MSCLoader menu overlay", PortedOriginalUiAvoidsModLoaderMenuOverlay),
     ("ported original exposes GitHub release metadata safely", PortedOriginalExposesGitHubReleaseMetadataSafely),
@@ -239,11 +240,29 @@ static void PortedOriginalHidesContinueForEmptySavesAndLoading()
     }
 
     var slotsManager = RunIlSpy(dll, "SaveSlots.SlotsManager");
+    var saveSlots = RunIlSpy(dll, "SaveSlots.SaveSlots");
     var loadingBehaviour = RunIlSpy(dll, "SaveSlots.LoadingBehaviour");
     AssertTrue(slotsManager.Contains("SetContinueVisible") && slotsManager.Contains("UpdateContinueButton"), "Continue visibility should go through one helper");
+    AssertTrue(slotsManager.Contains("FindContinueButtons") && slotsManager.Contains("foreach (GameObject"), "all Continue button candidates should be updated, not only one cached object");
+    AssertTrue(saveSlots.Contains("SyncContinueButtonToActiveSave"), "menu update should resync Continue visibility from active savefile.txt");
     AssertTrue(slotsManager.Contains("SetContinueVisible(HasPlayableSave(Application.persistentDataPath))"), "clicking the current slot should refresh Continue based on active savefile.txt");
     AssertTrue(slotsManager.Contains("HideContinueButton"), "SlotsManager should expose a loading-safe Continue hide helper");
     AssertTrue(loadingBehaviour.Contains("HideContinueButton"), "loading screen should hide the game Continue button as well as the Save Slots canvas");
+}
+
+static void PortedOriginalKeepsDeleteConfirmationAboveSaveUi()
+{
+    var root = FindWorkspaceRoot();
+    var dll = Path.Combine(root, "dist", "SaveSlots.dll");
+    if (!File.Exists(dll))
+    {
+        throw new Exception("Build the original SaveSlots port before running this check: " + dll);
+    }
+
+    var deleteButton = RunIlSpy(dll, "SaveSlots.DeleteSaveButton");
+    var slotsManager = RunIlSpy(dll, "SaveSlots.SlotsManager");
+    AssertTrue(slotsManager.Contains("HideSaveSlotsCanvasForPrompt"), "SlotsManager should expose a helper to hide Save Slots before MSCLoader modal prompts");
+    AssertTrue(deleteButton.Contains("HideSaveSlotsCanvasForPrompt"), "delete confirmation should hide the Save Slots canvas before opening the confirmation modal");
 }
 
 static void PortedOriginalAppliesBlueTheme()
