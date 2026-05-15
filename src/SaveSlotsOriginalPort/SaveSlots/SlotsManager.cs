@@ -258,6 +258,7 @@ internal class SlotsManager : MonoBehaviour
 		string defaultSaveData = Path.Combine(Application.persistentDataPath, MwcSaveFileName);
 		if (File.Exists(saveSlotsData))
 		{
+			SetContinueVisible(HasPlayableSave(Application.persistentDataPath));
 			return false;
 		}
 		if (HasActiveSaveData())
@@ -266,10 +267,7 @@ internal class SlotsManager : MonoBehaviour
 			if (result)
 			{
 				sender.LoadSaveData();
-				if ((UnityObject)(object)buttonContinue != (UnityObject)null)
-				{
-					buttonContinue.SetActive(File.Exists(defaultSaveData));
-				}
+				SetContinueVisible(File.Exists(defaultSaveData));
 			}
 			return result;
 		}
@@ -279,10 +277,7 @@ internal class SlotsManager : MonoBehaviour
 		}
 		sender.UpdateInfoData(isActive: true, "?", 0f, mortal: false, "UNKNOWN", "NEVER");
 		ModSave.Save<SaveData>("SaveSlots", sender.GetSaveData(), (string)null);
-		if ((UnityObject)(object)buttonContinue != (UnityObject)null)
-		{
-			buttonContinue.SetActive(false);
-		}
+		SetContinueVisible(false);
 		return true;
 	}
 
@@ -499,6 +494,16 @@ internal class SlotsManager : MonoBehaviour
 	}
 
 	private void UpdateContinueButton(bool visible)
+	{
+		SetContinueVisible(visible);
+	}
+
+	internal void HideContinueButton()
+	{
+		SetContinueVisible(false);
+	}
+
+	private void SetContinueVisible(bool visible)
 	{
 		FindContinueButton();
 		if ((UnityObject)(object)buttonContinue != (UnityObject)null)

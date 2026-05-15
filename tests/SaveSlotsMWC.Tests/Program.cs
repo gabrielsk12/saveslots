@@ -13,6 +13,7 @@ var tests = new List<(string Name, Action Body)>
     ("ported original keeps whole-folder safety backups", PortedOriginalKeepsWholeFolderSafetyBackups),
     ("ported original reads My Winter Car save metadata", PortedOriginalReadsMyWinterCarSaveMetadata),
     ("ported original switches saves without auto-loading", PortedOriginalSwitchesSavesWithoutAutoLoading),
+    ("ported original hides Continue for empty saves and loading", PortedOriginalHidesContinueForEmptySavesAndLoading),
     ("ported original applies MWC blue save slot theme", PortedOriginalAppliesBlueTheme),
     ("ported original save slot UI remains visible and avoids MSCLoader menu overlay", PortedOriginalUiAvoidsModLoaderMenuOverlay),
     ("ported original exposes GitHub release metadata safely", PortedOriginalExposesGitHubReleaseMetadataSafely),
@@ -226,6 +227,23 @@ static void PortedOriginalSwitchesSavesWithoutAutoLoading()
     AssertFalse(slotsManager.Contains("onClick") && slotsManager.Contains("Invoke"), "slot switching should not invoke the Continue button");
     AssertFalse(saveSlots.Contains("AutoLoadSelectedSave"), "settings should not contain the immediate-load option");
     AssertFalse(saveSlots.Contains("Load selected save immediately"), "settings should not show the immediate-load label");
+}
+
+static void PortedOriginalHidesContinueForEmptySavesAndLoading()
+{
+    var root = FindWorkspaceRoot();
+    var dll = Path.Combine(root, "dist", "SaveSlots.dll");
+    if (!File.Exists(dll))
+    {
+        throw new Exception("Build the original SaveSlots port before running this check: " + dll);
+    }
+
+    var slotsManager = RunIlSpy(dll, "SaveSlots.SlotsManager");
+    var loadingBehaviour = RunIlSpy(dll, "SaveSlots.LoadingBehaviour");
+    AssertTrue(slotsManager.Contains("SetContinueVisible") && slotsManager.Contains("UpdateContinueButton"), "Continue visibility should go through one helper");
+    AssertTrue(slotsManager.Contains("SetContinueVisible(HasPlayableSave(Application.persistentDataPath))"), "clicking the current slot should refresh Continue based on active savefile.txt");
+    AssertTrue(slotsManager.Contains("HideContinueButton"), "SlotsManager should expose a loading-safe Continue hide helper");
+    AssertTrue(loadingBehaviour.Contains("HideContinueButton"), "loading screen should hide the game Continue button as well as the Save Slots canvas");
 }
 
 static void PortedOriginalAppliesBlueTheme()
