@@ -1,10 +1,16 @@
+# Save Slots for My Winter Car
 
-
-This mod  lets you switch between **3 different save slots** without manually copying, pasting, or renaming save files.
+This mod lets you switch between **3 different save slots** without manually copying, pasting, or renaming save files.
 
 ## Features
-- Automatic backup before loading another slot  and if you screwed really bad  there are emergency backups stored here  ```txt
- C:\Users\Administrator\AppData\LocalLow\Amistech\SaveSlots\EmergencyBackups   ```
+
+- Automatic backup before loading another slot
+- Emergency backups are stored here if something goes really wrong:
+
+  ```txt
+  C:\Users\Administrator\AppData\LocalLow\Amistech\SaveSlots\EmergencyBackups
+  ```
+
 - Save profiles are stored here:
 
   ```txt
@@ -21,6 +27,7 @@ This mod  lets you switch between **3 different save slots** without manually co
 
 ## Support
 
-If you find a bug or console error or any other problem please contact me on Discord or create an issue on GitHub.
+If you find a bug or console error or any other problem  contact me on Discord or create an issue on GitHub.
 
-**Discord:** `gabriel_sk`
+**Discord:** `gabriel_sk`  
+**GitHub Issues:** [Create an issue](https://github.com/gabrielsk12/saveslots/issues?reload=1)
