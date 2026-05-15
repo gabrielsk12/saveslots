@@ -600,6 +600,10 @@ public class SaveSlots : Mod
 	public void Update()
 	{
 		ShowPendingUpdateMessage();
+		if (SlotsManager.Instance != null)
+		{
+			SlotsManager.Instance.SetContinueRefreshEnabled(!gameLoaded);
+		}
 		UpdateMenuVisibility();
 		if (CreateScreenshotOnEachSave != null && !CreateScreenshotOnEachSave.GetValue() && screenshotKey != null && screenshotKey.GetKeybindDown())
 		{

@@ -23,6 +23,8 @@ internal class SlotsManager : MonoBehaviour
 
 	private static SlotsManager instance;
 
+	private readonly List<GameObject> continueButtonCache = new List<GameObject>();
+
 	public Color colorActive;
 
 	public Color colorInnactive;
@@ -36,6 +38,16 @@ internal class SlotsManager : MonoBehaviour
 	private GameObject buttonContinue;
 
 	private bool isSwitchingSave;
+
+	private bool continueRefreshEnabled;
+
+	private bool selectedSlotRestoreFailed;
+
+	private bool applicationQuitting;
+
+	private string selectedSlotName;
+
+	private DateTime nextContinueButtonSearchUtc = DateTime.MinValue;
 
 	private DateTime lastPersistedActiveSaveWriteUtc = DateTime.MinValue;
 
@@ -112,6 +124,7 @@ internal class SlotsManager : MonoBehaviour
 		}
 		GameObject interfaceObject = GameObject.Find("Interface");
 		buttonContinue = LocateContinueButton(interfaceObject);
+		RestoreSelectedSlotToActiveProfile();
 		SyncContinueButtonToActiveSave();
 		GameObject licence = Resources.FindObjectsOfTypeAll<GameObject>().FirstOrDefault((GameObject g) => ((UnityObject)g).name == "Licence");
 		if ((UnityObject)(object)licence != (UnityObject)null && (UnityObject)(object)licence.GetComponent<SaveSlotsLicenceBehaviour>() == (UnityObject)null)
@@ -123,6 +136,35 @@ internal class SlotsManager : MonoBehaviour
 	private void Start()
 	{
 		((Component)this).gameObject.SetActive(false);
+	}
+
+	private void LateUpdate()
+	{
+		if (!applicationQuitting && continueRefreshEnabled)
+		{
+			RefreshContinueButtonFromSelectedSlot();
+		}
+	}
+
+	internal void SetContinueRefreshEnabled(bool enabled)
+	{
+		if (applicationQuitting)
+		{
+			return;
+		}
+		if (continueRefreshEnabled == enabled)
+		{
+			return;
+		}
+		continueRefreshEnabled = enabled;
+		if (enabled)
+		{
+			RefreshContinueButtonFromSelectedSlot();
+		}
+		else
+		{
+			HideContinueButton();
+		}
 	}
 
 	internal void Add(SlotBehaviour slotBehaviour)
@@ -156,9 +198,14 @@ internal class SlotsManager : MonoBehaviour
 
 	internal string CurrentSaveLoadedName()
 	{
+		if (!string.IsNullOrEmpty(selectedSlotName))
+		{
+			return NormalizeSlotName(selectedSlotName);
+		}
 		string markerSlotName = LoadActiveSlotMarker();
 		if (!string.IsNullOrEmpty(markerSlotName))
 		{
+			selectedSlotName = markerSlotName;
 			return markerSlotName;
 		}
 		if (!File.Exists(Path.Combine(Application.persistentDataPath, "SaveSlots.xml")))
@@ -170,7 +217,8 @@ internal class SlotsManager : MonoBehaviour
 			SaveData saveData = ModSave.Load<SaveData>("SaveSlots", "");
 			if (saveData != null && !string.IsNullOrEmpty(saveData.slotName))
 			{
-				return NormalizeSlotName(saveData.slotName);
+				selectedSlotName = NormalizeSlotName(saveData.slotName);
+				return selectedSlotName;
 			}
 		}
 		catch (Exception ex)
@@ -220,7 +268,8 @@ internal class SlotsManager : MonoBehaviour
 		try
 		{
 			Directory.CreateDirectory(SaveSlotsFolder);
-			File.WriteAllText(ActiveSlotMarkerPath, NormalizeSlotName(slotName));
+			selectedSlotName = NormalizeSlotName(slotName);
+			File.WriteAllText(ActiveSlotMarkerPath, selectedSlotName);
 		}
 		catch (Exception ex)
 		{
@@ -249,6 +298,7 @@ internal class SlotsManager : MonoBehaviour
 	{
 		string activePath = Application.persistentDataPath;
 		string currentSlotName = CurrentSaveLoadedName();
+		selectedSlotRestoreFailed = false;
 		if (currentSlotName == sender.SlotFileName)
 		{
 			InitializeCurrentEmptySlot(sender);
@@ -267,6 +317,10 @@ internal class SlotsManager : MonoBehaviour
 		bool targetHasSave = HasPlayableSave(targetSlotPath);
 		try
 		{
+			if (!targetHasSave)
+			{
+				DeleteEmptySlotFolder(targetSlotPath);
+			}
 			PrepareActiveProfileForSlotSwitch();
 			if (targetHasSave)
 			{
@@ -624,8 +678,6 @@ internal class SlotsManager : MonoBehaviour
 		if (!File.Exists(saveFile))
 		{
 			lastPersistedActiveSaveWriteUtc = DateTime.MinValue;
-			DeleteProfileContents(Application.persistentDataPath, preserveSharedOptions: true);
-			CopyOptionsToActiveSave(Application.persistentDataPath);
 			return;
 		}
 		DateTime writeTimeUtc = File.GetLastWriteTimeUtc(saveFile);
@@ -640,8 +692,55 @@ internal class SlotsManager : MonoBehaviour
 
 	internal void SyncContinueButtonToActiveSave()
 	{
-		PersistActiveSaveIfChanged();
-		SetContinueVisible(HasPlayableSave(Application.persistentDataPath));
+		RefreshContinueButtonFromSelectedSlot();
+	}
+
+	internal void RefreshContinueButtonFromSelectedSlot()
+	{
+		SetContinueVisible(ShouldShowContinueForSelectedSlot());
+	}
+
+	private bool ShouldShowContinueForSelectedSlot()
+	{
+		string selectedSlotPath = Path.Combine(SaveSlotsFolder, CurrentSaveLoadedName());
+		if (HasPlayableSave(selectedSlotPath))
+		{
+			return true;
+		}
+		return !Directory.Exists(selectedSlotPath) && HasPlayableSave(Application.persistentDataPath);
+	}
+
+	private void RestoreSelectedSlotToActiveProfile()
+	{
+		if (selectedSlotRestoreFailed || HasPlayableSave(Application.persistentDataPath))
+		{
+			return;
+		}
+		string currentSlotName = CurrentSaveLoadedName();
+		string slotPath = Path.Combine(SaveSlotsFolder, currentSlotName);
+		if (!HasPlayableSave(slotPath))
+		{
+			return;
+		}
+		try
+		{
+			CopyActiveOptionsToSharedFolder();
+			DeleteProfileContents(Application.persistentDataPath, preserveSharedOptions: true);
+			Directory.CreateDirectory(Application.persistentDataPath);
+			DirectoryCopy(slotPath, Application.persistentDataPath, copySubDirs: true);
+			if (SaveSlots.SynchronizeOptions.GetValue())
+			{
+				CopyOptionsToActiveSave(Application.persistentDataPath);
+			}
+			WriteActiveSlotMarker(currentSlotName);
+			ModSave.Save<SaveData>("SaveSlots", new SaveData(currentSlotName, DateTime.Now), (string)null);
+			lastPersistedActiveSaveWriteUtc = File.GetLastWriteTimeUtc(Path.Combine(Application.persistentDataPath, MwcSaveFileName));
+		}
+		catch (Exception ex)
+		{
+			selectedSlotRestoreFailed = true;
+			FailSafe("SAVE SLOTS RESTORE SELECTED", slotPath, ex);
+		}
 	}
 
 	internal void HideContinueButton()
@@ -667,14 +766,45 @@ internal class SlotsManager : MonoBehaviour
 	private List<GameObject> FindContinueButtons()
 	{
 		List<GameObject> continueButtons = new List<GameObject>();
-		GameObject interfaceObject = GameObject.Find("Interface");
-		AddContinueCandidate(continueButtons, LocateContinueButton(interfaceObject));
-		if ((UnityObject)(object)interfaceObject == (UnityObject)null)
+		for (int i = continueButtonCache.Count - 1; i >= 0; i--)
+		{
+			GameObject cachedButton = continueButtonCache[i];
+			if ((UnityObject)(object)cachedButton == (UnityObject)null)
+			{
+				continueButtonCache.RemoveAt(i);
+			}
+			else
+			{
+				AddContinueCandidate(continueButtons, cachedButton);
+			}
+		}
+		if (continueButtons.Count > 0)
+		{
+			buttonContinue = continueButtons[0];
+			return continueButtons;
+		}
+		if (DateTime.UtcNow < nextContinueButtonSearchUtc)
 		{
 			return continueButtons;
 		}
-		Button[] buttons = interfaceObject.GetComponentsInChildren<Button>(true);
-		foreach (Button button in buttons)
+		nextContinueButtonSearchUtc = DateTime.UtcNow.AddSeconds(1.0);
+		GameObject interfaceObject = GameObject.Find("Interface");
+		AddContinueCandidate(continueButtons, LocateContinueButton(interfaceObject));
+		if ((UnityObject)(object)interfaceObject != (UnityObject)null)
+		{
+			Button[] buttons = interfaceObject.GetComponentsInChildren<Button>(true);
+			foreach (Button button in buttons)
+			{
+				GameObject buttonObject = ((Component)button).gameObject;
+				string searchText = GetButtonSearchText(buttonObject);
+				if (searchText.Contains("BUTTONCONTINUE") || searchText.Contains("CONTINUE") || searchText.Contains("POKRA"))
+				{
+					AddContinueCandidate(continueButtons, buttonObject);
+				}
+			}
+		}
+		Button[] allButtons = Resources.FindObjectsOfTypeAll<Button>();
+		foreach (Button button in allButtons)
 		{
 			GameObject buttonObject = ((Component)button).gameObject;
 			string searchText = GetButtonSearchText(buttonObject);
@@ -684,6 +814,10 @@ internal class SlotsManager : MonoBehaviour
 			}
 		}
 		buttonContinue = continueButtons.Count > 0 ? continueButtons[0] : null;
+		foreach (GameObject continueButton in continueButtons)
+		{
+			AddContinueCandidate(continueButtonCache, continueButton);
+		}
 		return continueButtons;
 	}
 
@@ -857,6 +991,12 @@ internal class SlotsManager : MonoBehaviour
 	private void OnApplicationFocus(bool hasFocus)
 	{
 		UpdateInfoOfAllSaves();
+	}
+
+	private void OnApplicationQuit()
+	{
+		applicationQuitting = true;
+		continueRefreshEnabled = false;
 	}
 
 	private void DirectoryCopy(string sourceDirName, string destDirName, bool copySubDirs)

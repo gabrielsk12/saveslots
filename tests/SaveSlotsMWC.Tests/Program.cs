@@ -14,6 +14,7 @@ var tests = new List<(string Name, Action Body)>
     ("ported original reads My Winter Car save metadata", PortedOriginalReadsMyWinterCarSaveMetadata),
     ("ported original switches saves without auto-loading", PortedOriginalSwitchesSavesWithoutAutoLoading),
     ("ported original hides Continue for empty saves and loading", PortedOriginalHidesContinueForEmptySavesAndLoading),
+    ("ported original refreshes Continue from selected slot every frame", PortedOriginalRefreshesContinueFromSelectedSlotEveryFrame),
     ("ported original keeps delete confirmation above save UI", PortedOriginalKeepsDeleteConfirmationAboveSaveUi),
     ("ported original does not persist empty profile junk", PortedOriginalDoesNotPersistEmptyProfileJunk),
     ("ported original deletes active and inactive profiles completely", PortedOriginalDeletesProfilesCompletely),
@@ -247,10 +248,33 @@ static void PortedOriginalHidesContinueForEmptySavesAndLoading()
     var loadingBehaviour = RunIlSpy(dll, "SaveSlots.LoadingBehaviour");
     AssertTrue(slotsManager.Contains("SetContinueVisible") && slotsManager.Contains("UpdateContinueButton"), "Continue visibility should go through one helper");
     AssertTrue(slotsManager.Contains("FindContinueButtons") && slotsManager.Contains("foreach (GameObject"), "all Continue button candidates should be updated, not only one cached object");
-    AssertTrue(saveSlots.Contains("SyncContinueButtonToActiveSave"), "menu update should resync Continue visibility from active savefile.txt");
-    AssertTrue(slotsManager.Contains("SetContinueVisible(HasPlayableSave(Application.persistentDataPath))"), "clicking the current slot should refresh Continue based on active savefile.txt");
+    AssertTrue(saveSlots.Contains("SetContinueRefreshEnabled"), "menu update should enable continuous Continue refresh");
+    AssertTrue(slotsManager.Contains("RefreshContinueButtonFromSelectedSlot"), "clicking the current slot should refresh Continue from the selected profile state");
     AssertTrue(slotsManager.Contains("HideContinueButton"), "SlotsManager should expose a loading-safe Continue hide helper");
     AssertTrue(loadingBehaviour.Contains("HideContinueButton"), "loading screen should hide the game Continue button as well as the Save Slots canvas");
+}
+
+static void PortedOriginalRefreshesContinueFromSelectedSlotEveryFrame()
+{
+    var root = FindWorkspaceRoot();
+    var dll = Path.Combine(root, "dist", "SaveSlots.dll");
+    if (!File.Exists(dll))
+    {
+        throw new Exception("Build the original SaveSlots port before running this check: " + dll);
+    }
+
+    var slotsManager = RunIlSpy(dll, "SaveSlots.SlotsManager");
+    var saveSlots = RunIlSpy(dll, "SaveSlots.SaveSlots");
+    AssertTrue(slotsManager.Contains("private void LateUpdate()") && slotsManager.Contains("RefreshContinueButtonFromSelectedSlot();"), "Continue visibility must be corrected every Unity frame after menu scripts can change it");
+    AssertTrue(slotsManager.Contains("ShouldShowContinueForSelectedSlot") && slotsManager.Contains("Path.Combine(SaveSlotsFolder, CurrentSaveLoadedName())"), "Continue visibility should be based on selected slot savefile.txt, not only active folder state");
+    AssertTrue(slotsManager.Contains("SetContinueVisible(ShouldShowContinueForSelectedSlot())"), "per-frame Continue refresh should only set visibility from selected slot state");
+    var refreshStart = slotsManager.IndexOf("internal void RefreshContinueButtonFromSelectedSlot()", StringComparison.Ordinal);
+    var refreshEnd = slotsManager.IndexOf("private bool ShouldShowContinueForSelectedSlot()", StringComparison.Ordinal);
+    AssertTrue(refreshStart >= 0 && refreshEnd > refreshStart, "decompiled SlotsManager should contain RefreshContinueButtonFromSelectedSlot body");
+    var refreshBody = slotsManager.Substring(refreshStart, refreshEnd - refreshStart);
+    AssertFalse(refreshBody.Contains("DirectoryCopy") || refreshBody.Contains("DeleteProfileContents") || refreshBody.Contains("RestoreSelectedSlotToActiveProfile"), "per-frame Continue refresh must not copy, delete, or restore save files");
+    AssertTrue(slotsManager.Contains("continueButtonCache") && slotsManager.Contains("nextContinueButtonSearchUtc"), "Continue button lookup should be cached instead of scanning every frame");
+    AssertTrue(saveSlots.Contains("SetContinueRefreshEnabled(!gameLoaded)") || saveSlots.Contains("SetContinueRefreshEnabled(value: !gameLoaded)"), "SaveSlots.Update should drive refresh even when the Save Slots canvas path is not running");
 }
 
 static void PortedOriginalKeepsDeleteConfirmationAboveSaveUi()
