@@ -1,9 +1,31 @@
-Save Slots for My Winter Car
-Save slot manager for My Winter Car
+# Save Slots for My Winter Car
 
-Credits:
+This mod lets you switch between **3 different save slots** without manually copying, pasting, or renaming save files.
 
-Made by: Gabriel_SK
-Discord contact: gabriel_sk
-With this mod you can change saves through 3 slots so you dont need to copy and paste via files
-if you have any problems contact me on discord or create issue on github
+
+- Automatic backup before loading another slot
+- Emergency backups are stored here if you screwed rally bad:
+
+  ```txt
+  AppData\LocalLow\Amistech\SaveSlots\EmergencyBackups
+  ```
+
+- Save profiles are stored here:
+
+  ```txt
+  \AppData\LocalLow\Amistech\SaveSlots
+  ```
+
+- If you already had a save before installing the mod, do not worry.  
+  The mod automatically creates a save profile from your current active save.
+
+## Install
+
+1. Download `SaveSlots.dll` from the latest GitHub release or from Nexus.
+2. Copy `SaveSlots.dll` into your mods folder.
+
+
+If you find a bug or console error or any other bug  contact me on Discord or create an issue on GitHub.
+
+**Discord:** `gabriel_sk`  
+**GitHub Issues:** [Create an issue](https://github.com/gabrielsk12/saveslots/issues?reload=1)
