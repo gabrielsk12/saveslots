@@ -5,7 +5,7 @@ This mod lets you switch between **3 different save slots** without manually cop
 ## Features
 
 - Automatic backup before loading another slot
-- Emergency backups are stored here if something goes really wrong:
+- Emergency backups are stored here if you screwed rally bad:
 
   ```txt
   C:\Users\Administrator\AppData\LocalLow\Amistech\SaveSlots\EmergencyBackups
