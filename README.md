@@ -3,7 +3,8 @@
 This mod  lets you switch between **3 different save slots** without manually copying, pasting, or renaming save files.
 
 ## Features
-- Automatic backup before loading another slot  and if you screwed really bad  there are emergency backups stored here  ```txt C:\Users\Administrator\AppData\LocalLow\Amistech\SaveSlots\EmergencyBackups   ```
+- Automatic backup before loading another slot  and if you screwed really bad  there are emergency backups stored here  ```txt
+ C:\Users\Administrator\AppData\LocalLow\Amistech\SaveSlots\EmergencyBackups   ```
 - Save profiles are stored here:
 
   ```txt
