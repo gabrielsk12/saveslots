@@ -1,6 +1,8 @@
 ﻿using System;
 using System.IO;
+using System.Net;
 using System.Reflection;
+using System.Threading;
 using MSCLoader;
 using UnityEngine;
 using UnityEngine.EventSystems;
@@ -43,6 +45,14 @@ public class SaveSlots : Mod
 	private bool modStarted;
 
 	private bool gameLoaded;
+
+	private bool updateCheckInProgress;
+
+	private readonly object updateCheckLock = new object();
+
+	private string pendingUpdateTitle;
+
+	private string pendingUpdateMessage;
 
 	public override string ID => "SaveSlots";
 
@@ -97,6 +107,7 @@ public class SaveSlots : Mod
 		Settings.AddButton("APPLY CUSTOM SCREENSHOT TO CURRENT SAVE", ApplyCustomScreenshotToCurrentSave, new Color32(21, 89, 119, byte.MaxValue), Color.white, SettingsButton.ButtonIcon.Folder);
 		Settings.AddText("");
 		Settings.AddHeader("LINKS");
+		Settings.AddButton("CHECK FOR UPDATES", CheckForUpdates);
 		Settings.AddButton("GITHUB RELEASES", OpenGitHubReleases);
 		Settings.AddButton("GITHUB REPOSITORY", OpenGitHubRepository);
 		Settings.AddText("");
@@ -124,12 +135,138 @@ public class SaveSlots : Mod
 
 	private void OpenGitHubReleases()
 	{
-		Application.OpenURL("https://github.com/gabrielsk12/saveslotsMWC/releases");
+		Application.OpenURL("https://github.com/gabrielsk12/saveslots/releases");
 	}
 
 	private void OpenGitHubRepository()
 	{
-		Application.OpenURL("https://github.com/gabrielsk12/saveslotsMWC");
+		Application.OpenURL("https://github.com/gabrielsk12/saveslots");
+	}
+
+	private void CheckForUpdates()
+	{
+		lock (updateCheckLock)
+		{
+			if (updateCheckInProgress)
+			{
+				ModUI.ShowMessage("Update check is already running.", "Save Slots");
+				return;
+			}
+			updateCheckInProgress = true;
+		}
+		ModUI.ShowMessage("Checking GitHub releases...", "Save Slots");
+		ThreadPool.QueueUserWorkItem(delegate
+		{
+			string message;
+			try
+			{
+				message = BuildUpdateCheckMessage();
+			}
+			catch (Exception ex)
+			{
+				ModConsole.LogError("Save Slots update check failed:\n" + ex);
+				message = "Could not check GitHub releases. Check output_log.txt or open GitHub Releases manually.";
+			}
+			lock (updateCheckLock)
+			{
+				pendingUpdateTitle = "Save Slots";
+				pendingUpdateMessage = message;
+				updateCheckInProgress = false;
+			}
+		});
+	}
+
+	private string BuildUpdateCheckMessage()
+	{
+		string url = "https://api.github.com/repos/gabrielsk12/saveslots/releases";
+		HttpWebRequest request = (HttpWebRequest)WebRequest.Create(url);
+		request.UserAgent = "SaveSlotsMWC/" + Version;
+		request.Accept = "application/vnd.github+json";
+		request.Timeout = 10000;
+		using (HttpWebResponse response = (HttpWebResponse)request.GetResponse())
+		using (StreamReader reader = new StreamReader(response.GetResponseStream()))
+		{
+			string json = reader.ReadToEnd();
+			string tagName = ExtractJsonString(json, "tag_name");
+			if (string.IsNullOrEmpty(tagName))
+			{
+				return "GitHub did not return a release version. Open GitHub Releases manually.";
+			}
+			int compare = CompareVersions(CleanVersion(tagName), CleanVersion(Version));
+			if (compare > 0)
+			{
+				return "New version " + tagName + " is available.\nOpen GitHub Releases and download SaveSlots.dll.";
+			}
+			return "You are using the latest published version (" + Version + ").";
+		}
+	}
+
+	private string ExtractJsonString(string json, string key)
+	{
+		string marker = "\"" + key + "\":";
+		int markerIndex = json.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+		if (markerIndex < 0)
+		{
+			return null;
+		}
+		int firstQuote = json.IndexOf('"', markerIndex + marker.Length);
+		if (firstQuote < 0)
+		{
+			return null;
+		}
+		int secondQuote = json.IndexOf('"', firstQuote + 1);
+		if (secondQuote < 0)
+		{
+			return null;
+		}
+		return json.Substring(firstQuote + 1, secondQuote - firstQuote - 1);
+	}
+
+	private string CleanVersion(string version)
+	{
+		if (string.IsNullOrEmpty(version))
+		{
+			return "0.0";
+		}
+		version = version.Trim();
+		if (version.StartsWith("v", StringComparison.OrdinalIgnoreCase))
+		{
+			version = version.Substring(1);
+		}
+		return version;
+	}
+
+	private int CompareVersions(string left, string right)
+	{
+		string[] leftParts = left.Split('.');
+		string[] rightParts = right.Split('.');
+		int length = Math.Max(leftParts.Length, rightParts.Length);
+		for (int i = 0; i < length; i++)
+		{
+			int leftValue = ParseVersionPart(leftParts, i);
+			int rightValue = ParseVersionPart(rightParts, i);
+			if (leftValue != rightValue)
+			{
+				return leftValue.CompareTo(rightValue);
+			}
+		}
+		return 0;
+	}
+
+	private int ParseVersionPart(string[] parts, int index)
+	{
+		if (index >= parts.Length)
+		{
+			return 0;
+		}
+		string part = parts[index];
+		int dashIndex = part.IndexOf('-');
+		if (dashIndex >= 0)
+		{
+			part = part.Substring(0, dashIndex);
+		}
+		int value;
+		return int.TryParse(part, out value) ? value : 0;
 	}
 
 	private void ApplyCustomScreenshotToCurrentSave()
@@ -454,10 +591,15 @@ public class SaveSlots : Mod
 		{
 			TakeScreenshot(enableGUI: false);
 		}
+		if (SlotsManager.Instance != null)
+		{
+			SlotsManager.Instance.PersistActiveSaveNow();
+		}
 	}
 
 	public void Update()
 	{
+		ShowPendingUpdateMessage();
 		UpdateMenuVisibility();
 		if (CreateScreenshotOnEachSave != null && !CreateScreenshotOnEachSave.GetValue() && screenshotKey != null && screenshotKey.GetKeybindDown())
 		{
@@ -466,6 +608,26 @@ public class SaveSlots : Mod
 			{
 				shutter.Play();
 			}
+		}
+	}
+
+	private void ShowPendingUpdateMessage()
+	{
+		string title = null;
+		string message = null;
+		lock (updateCheckLock)
+		{
+			if (!string.IsNullOrEmpty(pendingUpdateMessage))
+			{
+				title = pendingUpdateTitle;
+				message = pendingUpdateMessage;
+				pendingUpdateTitle = null;
+				pendingUpdateMessage = null;
+			}
+		}
+		if (!string.IsNullOrEmpty(message))
+		{
+			ModUI.ShowMessage(message, string.IsNullOrEmpty(title) ? "Save Slots" : title);
 		}
 	}
 

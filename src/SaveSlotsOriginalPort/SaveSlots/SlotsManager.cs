@@ -17,6 +17,8 @@ internal class SlotsManager : MonoBehaviour
 
 	private const string MwcSaveFileName = "savefile.txt";
 
+	private const string ActiveSlotFileName = "ActiveSlot.txt";
+
 	private const int DefaultMaximumEmergencyBackups = 5;
 
 	private static SlotsManager instance;
@@ -34,6 +36,8 @@ internal class SlotsManager : MonoBehaviour
 	private GameObject buttonContinue;
 
 	private bool isSwitchingSave;
+
+	private DateTime lastPersistedActiveSaveWriteUtc = DateTime.MinValue;
 
 	private readonly Dictionary<Vector3, string> saves = new Dictionary<Vector3, string>
 	{
@@ -78,6 +82,8 @@ internal class SlotsManager : MonoBehaviour
 	private string BackupFolder => Path.Combine(SaveRoot, "SAVE SLOTS BACKUP");
 
 	private string EmergencyBackupsFolder => Path.Combine(SaveSlotsFolder, "EmergencyBackups");
+
+	private string ActiveSlotMarkerPath => Path.Combine(SaveSlotsFolder, ActiveSlotFileName);
 
 	private void Awake()
 	{
@@ -150,6 +156,11 @@ internal class SlotsManager : MonoBehaviour
 
 	internal string CurrentSaveLoadedName()
 	{
+		string markerSlotName = LoadActiveSlotMarker();
+		if (!string.IsNullOrEmpty(markerSlotName))
+		{
+			return markerSlotName;
+		}
 		if (!File.Exists(Path.Combine(Application.persistentDataPath, "SaveSlots.xml")))
 		{
 			return string.Format("Save{0}", "1");
@@ -187,6 +198,36 @@ internal class SlotsManager : MonoBehaviour
 		return "Save" + slotNumber;
 	}
 
+	private string LoadActiveSlotMarker()
+	{
+		try
+		{
+			if (!File.Exists(ActiveSlotMarkerPath))
+			{
+				return null;
+			}
+			return NormalizeSlotName(File.ReadAllText(ActiveSlotMarkerPath).Trim());
+		}
+		catch (Exception ex)
+		{
+			ModConsole.LogError("Save Slots could not read active slot marker.\n" + ex);
+			return null;
+		}
+	}
+
+	private void WriteActiveSlotMarker(string slotName)
+	{
+		try
+		{
+			Directory.CreateDirectory(SaveSlotsFolder);
+			File.WriteAllText(ActiveSlotMarkerPath, NormalizeSlotName(slotName));
+		}
+		catch (Exception ex)
+		{
+			ModConsole.LogError("Save Slots could not write active slot marker.\n" + ex);
+		}
+	}
+
 	internal void LoadSave(SlotBehaviour sender)
 	{
 		if (isSwitchingSave)
@@ -213,24 +254,20 @@ internal class SlotsManager : MonoBehaviour
 			InitializeCurrentEmptySlot(sender);
 			return;
 		}
-		SaveCurrentMetadata(currentSlotName);
-		string currentSlotPath = Path.Combine(SaveSlotsFolder, currentSlotName);
-		Directory.CreateDirectory(currentSlotPath);
 		try
 		{
-			CopyActiveSaveToSlot(activePath, currentSlotPath);
+			StoreActiveProfileInSlot(currentSlotName);
 		}
 		catch (Exception ex)
 		{
-			FailSafe("SAVE SLOTS BACKUP CURRENT", activePath, ex);
+			FailSafe("SAVE SLOTS STORE CURRENT", activePath, ex);
 			return;
 		}
 		string targetSlotPath = Path.Combine(SaveSlotsFolder, sender.SlotFileName);
 		bool targetHasSave = HasPlayableSave(targetSlotPath);
 		try
 		{
-			MoveActiveSaveToEmergencyBackup();
-			Directory.CreateDirectory(activePath);
+			PrepareActiveProfileForSlotSwitch();
 			if (targetHasSave)
 			{
 				DirectoryCopy(targetSlotPath, activePath, copySubDirs: true);
@@ -243,9 +280,17 @@ internal class SlotsManager : MonoBehaviour
 			{
 				CopyOptionsToActiveSave(activePath);
 			}
-			ModSave.Save<SaveData>("SaveSlots", new SaveData(sender.SlotFileName, DateTime.Now), (string)null);
+			WriteActiveSlotMarker(sender.SlotFileName);
+			if (targetHasSave)
+			{
+				ModSave.Save<SaveData>("SaveSlots", new SaveData(sender.SlotFileName, DateTime.Now), (string)null);
+			}
+			else
+			{
+				DeleteFileSafe(Path.Combine(activePath, "SaveSlots.xml"));
+			}
 			sender.LoadSaveData();
-			UpdateContinueButton(targetHasSave);
+			UpdateContinueButton(HasPlayableSave(activePath));
 		}
 		catch (Exception ex2)
 		{
@@ -257,7 +302,8 @@ internal class SlotsManager : MonoBehaviour
 	{
 		string saveSlotsData = Path.Combine(Application.persistentDataPath, "SaveSlots.xml");
 		string defaultSaveData = Path.Combine(Application.persistentDataPath, MwcSaveFileName);
-		if (File.Exists(saveSlotsData))
+		WriteActiveSlotMarker(sender.SlotFileName);
+		if (File.Exists(saveSlotsData) && HasPlayableSave(Application.persistentDataPath))
 		{
 			SetContinueVisible(HasPlayableSave(Application.persistentDataPath));
 			return false;
@@ -276,8 +322,10 @@ internal class SlotsManager : MonoBehaviour
 		{
 			Directory.CreateDirectory(Application.persistentDataPath);
 		}
+		DeleteProfileContents(Application.persistentDataPath, preserveSharedOptions: true);
+		CopyOptionsToActiveSave(Application.persistentDataPath);
 		sender.UpdateInfoData(isActive: true, "?", 0f, mortal: false, "UNKNOWN", "NEVER");
-		ModSave.Save<SaveData>("SaveSlots", sender.GetSaveData(), (string)null);
+		DeleteFileSafe(saveSlotsData);
 		SetContinueVisible(false);
 		return true;
 	}
@@ -285,7 +333,7 @@ internal class SlotsManager : MonoBehaviour
 	private bool EnsureFirstInstallProfile()
 	{
 		string saveSlotsData = Path.Combine(Application.persistentDataPath, "SaveSlots.xml");
-		if (File.Exists(saveSlotsData) || !HasActiveSaveData())
+		if (File.Exists(saveSlotsData) || !HasPlayableSave(Application.persistentDataPath))
 		{
 			return false;
 		}
@@ -296,6 +344,7 @@ internal class SlotsManager : MonoBehaviour
 				Directory.CreateDirectory(Application.persistentDataPath);
 			}
 			SaveData saveData = new SaveData("Save1", DateTime.Now);
+			WriteActiveSlotMarker(saveData.slotName);
 			ModSave.Save<SaveData>("SaveSlots", saveData, (string)null);
 			CopyActiveOptionsToSharedFolder();
 			string save1Folder = Path.Combine(SaveSlotsFolder, "Save1");
@@ -316,19 +365,7 @@ internal class SlotsManager : MonoBehaviour
 
 	private bool HasActiveSaveData()
 	{
-		if (!Directory.Exists(Application.persistentDataPath))
-		{
-			return false;
-		}
-		foreach (string file in Directory.GetFiles(Application.persistentDataPath))
-		{
-			string fileName = Path.GetFileName(file);
-			if (!fileName.Equals("SaveSlots.xml", StringComparison.OrdinalIgnoreCase))
-			{
-				return true;
-			}
-		}
-		return Directory.GetDirectories(Application.persistentDataPath).Length != 0;
+		return HasPlayableSave(Application.persistentDataPath);
 	}
 
 	private bool IsDirectoryEmpty(string path)
@@ -350,11 +387,76 @@ internal class SlotsManager : MonoBehaviour
 
 	private void SaveCurrentMetadata(string slotName)
 	{
+		string normalizedSlotName = NormalizeSlotName(slotName);
+		WriteActiveSlotMarker(normalizedSlotName);
 		if (!Directory.Exists(Application.persistentDataPath))
 		{
 			return;
 		}
-		ModSave.Save<SaveData>("SaveSlots", new SaveData(slotName, DateTime.Now), (string)null);
+		if (HasPlayableSave(Application.persistentDataPath))
+		{
+			ModSave.Save<SaveData>("SaveSlots", new SaveData(normalizedSlotName, DateTime.Now), (string)null);
+		}
+	}
+
+	private void StoreActiveProfileInSlot(string slotName)
+	{
+		string normalizedSlotName = NormalizeSlotName(slotName);
+		WriteActiveSlotMarker(normalizedSlotName);
+		CopyActiveOptionsToSharedFolder();
+		string slotPath = Path.Combine(SaveSlotsFolder, normalizedSlotName);
+		if (HasPlayableSave(Application.persistentDataPath))
+		{
+			SaveCurrentMetadata(normalizedSlotName);
+			ReplaceSlotFolderFromActive(slotPath);
+			return;
+		}
+		DeleteEmptySlotFolder(slotPath);
+		DeleteProfileContents(Application.persistentDataPath, preserveSharedOptions: true);
+		CopyOptionsToActiveSave(Application.persistentDataPath);
+	}
+
+	private void ReplaceSlotFolderFromActive(string slotPath)
+	{
+		string tempSlotPath = NextAvailableDirectoryName(slotPath + ".tmp");
+		try
+		{
+			DirectoryCopy(Application.persistentDataPath, tempSlotPath, copySubDirs: true);
+			if (Directory.Exists(slotPath))
+			{
+				DeleteDirectorySafe(slotPath);
+			}
+			Directory.Move(tempSlotPath, slotPath);
+		}
+		catch
+		{
+			if (Directory.Exists(tempSlotPath))
+			{
+				DeleteDirectorySafe(tempSlotPath);
+			}
+			throw;
+		}
+	}
+
+	private void DeleteEmptySlotFolder(string slotPath)
+	{
+		if (Directory.Exists(slotPath) && !HasPlayableSave(slotPath))
+		{
+			DeleteDirectorySafe(slotPath);
+		}
+	}
+
+	private void PrepareActiveProfileForSlotSwitch()
+	{
+		if (HasPlayableSave(Application.persistentDataPath))
+		{
+			MoveActiveSaveToEmergencyBackup();
+		}
+		else
+		{
+			DeleteProfileContents(Application.persistentDataPath, preserveSharedOptions: true);
+		}
+		Directory.CreateDirectory(Application.persistentDataPath);
 	}
 
 	private void CopyActiveSaveToSlot(string activePath, string slotPath)
@@ -489,6 +591,11 @@ internal class SlotsManager : MonoBehaviour
 		return SaveSlots.CopyMSCEditorBackups.GetValue() || !fileName.ContainsAny("_backup");
 	}
 
+	private bool IsSharedOptionsFile(string fileName)
+	{
+		return fileName.Equals("options.txt", StringComparison.OrdinalIgnoreCase) || fileName.Equals("calibrator.cfg", StringComparison.OrdinalIgnoreCase);
+	}
+
 	private bool HasPlayableSave(string path)
 	{
 		return Directory.Exists(path) && File.Exists(Path.Combine(path, MwcSaveFileName));
@@ -499,8 +606,41 @@ internal class SlotsManager : MonoBehaviour
 		SetContinueVisible(visible);
 	}
 
+	internal void PersistActiveSaveNow()
+	{
+		PersistActiveSave(force: true);
+	}
+
+	internal void PersistActiveSaveIfChanged()
+	{
+		PersistActiveSave(force: false);
+	}
+
+	private void PersistActiveSave(bool force)
+	{
+		string currentSlotName = CurrentSaveLoadedName();
+		WriteActiveSlotMarker(currentSlotName);
+		string saveFile = Path.Combine(Application.persistentDataPath, MwcSaveFileName);
+		if (!File.Exists(saveFile))
+		{
+			lastPersistedActiveSaveWriteUtc = DateTime.MinValue;
+			DeleteProfileContents(Application.persistentDataPath, preserveSharedOptions: true);
+			CopyOptionsToActiveSave(Application.persistentDataPath);
+			return;
+		}
+		DateTime writeTimeUtc = File.GetLastWriteTimeUtc(saveFile);
+		if (!force && writeTimeUtc == lastPersistedActiveSaveWriteUtc)
+		{
+			return;
+		}
+		SaveCurrentMetadata(currentSlotName);
+		ReplaceSlotFolderFromActive(Path.Combine(SaveSlotsFolder, currentSlotName));
+		lastPersistedActiveSaveWriteUtc = writeTimeUtc;
+	}
+
 	internal void SyncContinueButtonToActiveSave()
 	{
+		PersistActiveSaveIfChanged();
 		SetContinueVisible(HasPlayableSave(Application.persistentDataPath));
 	}
 
@@ -628,11 +768,49 @@ internal class SlotsManager : MonoBehaviour
 
 	internal void DeleteSave(SlotBehaviour slotBehaviour)
 	{
+		if ((UnityObject)(object)slotBehaviour == (UnityObject)(object)CurrentSaveLoaded())
+		{
+			DeleteCurrentActiveSlot(slotBehaviour);
+			return;
+		}
 		string path = Path.Combine(SaveSlotsFolder, slotBehaviour.SlotFileName);
 		if (Directory.Exists(path))
 		{
-			Directory.Delete(path, recursive: true);
+			DeleteDirectorySafe(path);
+		}
+		slotBehaviour.UpdateInfoData(isActive: false, "?", 0f, mortal: false, "UNKNOWN", "NEVER");
+		UpdateInfoOfAllSaves();
+		UpdateContinueButton(HasPlayableSave(Application.persistentDataPath));
+	}
+
+	private void DeleteCurrentActiveSlot(SlotBehaviour slotBehaviour)
+	{
+		string slotName = NormalizeSlotName(slotBehaviour.SlotFileName);
+		try
+		{
+			CopyActiveOptionsToSharedFolder();
+			if (HasPlayableSave(Application.persistentDataPath))
+			{
+				MoveActiveSaveToEmergencyBackup();
+				Directory.CreateDirectory(Application.persistentDataPath);
+			}
+			else
+			{
+				DeleteProfileContents(Application.persistentDataPath, preserveSharedOptions: true);
+				Directory.CreateDirectory(Application.persistentDataPath);
+			}
+			DeleteDirectorySafe(Path.Combine(SaveSlotsFolder, slotName));
+			CopyOptionsToActiveSave(Application.persistentDataPath);
+			WriteActiveSlotMarker(slotName);
+			DeleteFileSafe(Path.Combine(Application.persistentDataPath, "SaveSlots.xml"));
 			slotBehaviour.UpdateInfoData(isActive: false, "?", 0f, mortal: false, "UNKNOWN", "NEVER");
+			UpdateInfoOfAllSaves();
+			UpdateSelectedButtons(slotBehaviour);
+			UpdateContinueButton(false);
+		}
+		catch (Exception ex)
+		{
+			FailSafe("SAVE SLOTS DELETE CURRENT", slotName, ex);
 		}
 	}
 
@@ -715,6 +893,64 @@ internal class SlotsManager : MonoBehaviour
 	private void UnlockFile(FileInfo fi)
 	{
 		File.SetAttributes(fi.FullName, File.GetAttributes(fi.FullName) & ~FileAttributes.ReadOnly);
+	}
+
+	private void DeleteProfileContents(string path, bool preserveSharedOptions)
+	{
+		if (!Directory.Exists(path))
+		{
+			return;
+		}
+		foreach (FileInfo fileInfo in new DirectoryInfo(path).GetFiles())
+		{
+			if (preserveSharedOptions && IsSharedOptionsFile(fileInfo.Name))
+			{
+				continue;
+			}
+			DeleteFileSafe(fileInfo.FullName);
+		}
+		foreach (DirectoryInfo directoryInfo in new DirectoryInfo(path).GetDirectories())
+		{
+			DeleteDirectorySafe(directoryInfo.FullName);
+		}
+	}
+
+	private void DeleteDirectorySafe(string path)
+	{
+		if (!Directory.Exists(path))
+		{
+			return;
+		}
+		DirectoryInfo directoryInfo = new DirectoryInfo(path);
+		foreach (FileInfo fileInfo in directoryInfo.GetFiles())
+		{
+			DeleteFileSafe(fileInfo.FullName);
+		}
+		foreach (DirectoryInfo childDirectory in directoryInfo.GetDirectories())
+		{
+			DeleteDirectorySafe(childDirectory.FullName);
+		}
+		UnlockPath(path);
+		Directory.Delete(path, recursive: false);
+	}
+
+	private void DeleteFileSafe(string path)
+	{
+		if (!File.Exists(path))
+		{
+			return;
+		}
+		UnlockPath(path);
+		File.Delete(path);
+	}
+
+	private void UnlockPath(string path)
+	{
+		FileAttributes attributes = File.GetAttributes(path);
+		attributes &= ~FileAttributes.ReadOnly;
+		attributes &= ~FileAttributes.Hidden;
+		attributes &= ~FileAttributes.System;
+		File.SetAttributes(path, attributes);
 	}
 }
 }

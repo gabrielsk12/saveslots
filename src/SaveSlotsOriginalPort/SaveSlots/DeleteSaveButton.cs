@@ -27,12 +27,6 @@ internal class DeleteSaveButton : MonoBehaviour
 		{
 			return;
 		}
-		if ((Object)(object)slotBehaviour == (Object)(object)SlotsManager.Instance.CurrentSaveLoaded())
-		{
-			SlotsManager.Instance.HideSaveSlotsCanvasForPrompt();
-			currentPrompt = ModPrompt.CreatePrompt("Can't delete currently active save.", "Save Slots", (UnityAction)null);
-			return;
-		}
 		SlotsManager.Instance.HideSaveSlotsCanvasForPrompt();
 		currentPrompt = ModPrompt.CreateYesNoPrompt("You will <color=red>permamently</color> delete this save file!\n\nAre you sure you want to continue?", "Save Slots: Warning", (UnityAction)delegate
 		{

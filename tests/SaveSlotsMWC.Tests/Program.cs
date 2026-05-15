@@ -15,9 +15,12 @@ var tests = new List<(string Name, Action Body)>
     ("ported original switches saves without auto-loading", PortedOriginalSwitchesSavesWithoutAutoLoading),
     ("ported original hides Continue for empty saves and loading", PortedOriginalHidesContinueForEmptySavesAndLoading),
     ("ported original keeps delete confirmation above save UI", PortedOriginalKeepsDeleteConfirmationAboveSaveUi),
+    ("ported original does not persist empty profile junk", PortedOriginalDoesNotPersistEmptyProfileJunk),
+    ("ported original deletes active and inactive profiles completely", PortedOriginalDeletesProfilesCompletely),
     ("ported original applies MWC blue save slot theme", PortedOriginalAppliesBlueTheme),
     ("ported original save slot UI remains visible and avoids MSCLoader menu overlay", PortedOriginalUiAvoidsModLoaderMenuOverlay),
     ("ported original exposes GitHub release metadata safely", PortedOriginalExposesGitHubReleaseMetadataSafely),
+    ("ported original checks GitHub releases safely from settings", PortedOriginalChecksGitHubReleasesSafely),
     ("ported original public branding is Gabriel_SK-only", PortedOriginalPublicBrandingIsGabrielOnly),
     ("ported original keeps normal console logging quiet", PortedOriginalKeepsNormalConsoleLoggingQuiet),
     ("ported original avoids shell execution and self-modifying update code", PortedOriginalAvoidsUnsafeUpdaterBehavior),
@@ -265,6 +268,39 @@ static void PortedOriginalKeepsDeleteConfirmationAboveSaveUi()
     AssertTrue(deleteButton.Contains("HideSaveSlotsCanvasForPrompt"), "delete confirmation should hide the Save Slots canvas before opening the confirmation modal");
 }
 
+static void PortedOriginalDoesNotPersistEmptyProfileJunk()
+{
+    var root = FindWorkspaceRoot();
+    var dll = Path.Combine(root, "dist", "SaveSlots.dll");
+    if (!File.Exists(dll))
+    {
+        throw new Exception("Build the original SaveSlots port before running this check: " + dll);
+    }
+
+    var slotsManager = RunIlSpy(dll, "SaveSlots.SlotsManager");
+    AssertTrue(slotsManager.Contains("ActiveSlot.txt") && slotsManager.Contains("WriteActiveSlotMarker"), "selected empty slots should be remembered outside the active save folder");
+    AssertTrue(slotsManager.Contains("PersistActiveSaveIfChanged") && slotsManager.Contains("ReplaceSlotFolderFromActive"), "new game saves should be mirrored into the selected slot after savefile.txt appears");
+    AssertTrue(slotsManager.Contains("DeleteEmptySlotFolder") && slotsManager.Contains("DeleteProfileContents"), "empty slots should not keep Mods.txt, steam_autocloud.vdf, or SaveSlots.xml as fake saves");
+    AssertTrue(slotsManager.Contains("HasPlayableSave(Application.persistentDataPath)") && slotsManager.Contains("SetContinueVisible(HasPlayableSave(Application.persistentDataPath))"), "Continue should be recalculated from the real active savefile.txt");
+}
+
+static void PortedOriginalDeletesProfilesCompletely()
+{
+    var root = FindWorkspaceRoot();
+    var dll = Path.Combine(root, "dist", "SaveSlots.dll");
+    if (!File.Exists(dll))
+    {
+        throw new Exception("Build the original SaveSlots port before running this check: " + dll);
+    }
+
+    var slotsManager = RunIlSpy(dll, "SaveSlots.SlotsManager");
+    var deleteButton = RunIlSpy(dll, "SaveSlots.DeleteSaveButton");
+    AssertTrue(slotsManager.Contains("DeleteCurrentActiveSlot"), "deleting the selected slot should clear the active profile instead of refusing");
+    AssertTrue(slotsManager.Contains("DeleteDirectorySafe") && slotsManager.Contains("DeleteFileSafe"), "delete should unlock and remove complete profile folders/files");
+    AssertTrue(slotsManager.Contains("MoveActiveSaveToEmergencyBackup") && slotsManager.Contains("CopyOptionsToActiveSave"), "deleting an active real save should keep an emergency backup and preserve shared options");
+    AssertFalse(deleteButton.Contains("Can't delete currently active save."), "current active slot should be deletable after confirmation");
+}
+
 static void PortedOriginalAppliesBlueTheme()
 {
     var root = FindWorkspaceRoot();
@@ -308,11 +344,28 @@ static void PortedOriginalExposesGitHubReleaseMetadataSafely()
 
     var saveSlots = RunIlSpy(dll, "SaveSlots.SaveSlots");
     var bytes = File.ReadAllBytes(dll);
-    AssertTrue(saveSlots.Contains("github.com/gabrielsk12/saveslotsMWC/releases"), "mod settings should point players to the new GitHub releases page");
+    AssertTrue(saveSlots.Contains("github.com/gabrielsk12/saveslots/releases"), "mod settings should point players to the new GitHub releases page");
     AssertTrue(saveSlots.Contains("gabriel_sk"), "mod settings should include the Discord contact");
     AssertFalse(saveSlots.Contains("discord.com/users/gabriel_sk"), "Discord contact button should not open an invalid Discord user URL");
     AssertFalse(saveSlots.Contains("Settings.AddButton(\"<color=#52D6FF>gabriel_sk</color>"), "Discord contact should not be a settings button");
-    AssertTrue(ContainsUtf16(bytes, "github.com/gabrielsk12/saveslotsMWC"), "compiled mod should contain the new repository link");
+    AssertTrue(ContainsUtf16(bytes, "github.com/gabrielsk12/saveslots"), "compiled mod should contain the new repository link");
+}
+
+static void PortedOriginalChecksGitHubReleasesSafely()
+{
+    var root = FindWorkspaceRoot();
+    var dll = Path.Combine(root, "dist", "SaveSlots.dll");
+    if (!File.Exists(dll))
+    {
+        throw new Exception("Build the original SaveSlots port before running this check: " + dll);
+    }
+
+    var saveSlots = RunIlSpy(dll, "SaveSlots.SaveSlots");
+    var bytes = File.ReadAllBytes(dll);
+    AssertTrue(saveSlots.Contains("CHECK FOR UPDATES") && saveSlots.Contains("CheckForUpdates"), "settings should include a ModLoader button to check GitHub releases");
+    AssertTrue(saveSlots.Contains("api.github.com/repos/gabrielsk12/saveslots/releases"), "update check should read GitHub release metadata including beta releases");
+    AssertTrue(saveSlots.Contains("ThreadPool.QueueUserWorkItem"), "network update checks should not freeze the game menu thread");
+    AssertFalse(ContainsAscii(bytes, "DownloadFile"), "update check must not download or replace DLLs automatically");
 }
 
 static void PortedOriginalPublicBrandingIsGabrielOnly()
