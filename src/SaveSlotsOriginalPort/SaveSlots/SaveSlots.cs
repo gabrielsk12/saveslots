@@ -65,7 +65,7 @@ public class SaveSlots : Mod
 
 	private string pendingUpdateMessage;
 
-	public override string ID => "SaveSlots";
+	public override string ID => "SaveSlotsMWC";
 
 	public override string Name => "SAVE SLOTS";
 

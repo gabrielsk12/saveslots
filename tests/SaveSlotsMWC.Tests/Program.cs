@@ -76,6 +76,7 @@ static void PortedOriginalSaveSlotsIsMSCLoaderOnly()
     AssertFalse(ContainsAscii(bytes, "LightspeedModLoader"), "ported SaveSlots.dll must not reference LightspeedModLoader");
     AssertTrue(ContainsAscii(bytes, "MSCLoader"), "ported SaveSlots.dll should reference MSCLoader");
     var decompiled = RunIlSpy(dll, "SaveSlots.SaveSlots");
+    AssertTrue(decompiled.Contains("ID => \"SaveSlotsMWC\""), "ported SaveSlots.dll should use the public MSCLoader mod ID SaveSlotsMWC");
     AssertTrue(decompiled.Contains("SupportedGames => (Game)2") || decompiled.Contains("SupportedGames => Game.MyWinterCar"), "ported SaveSlots.dll should declare MyWinterCar support");
 }
 
@@ -366,6 +367,7 @@ static void PortedOriginalExposesGitHubReleaseMetadataSafely()
     var saveSlots = RunIlSpy(dll, "SaveSlots.SaveSlots");
     var bytes = File.ReadAllBytes(dll);
     AssertTrue(saveSlots.Contains("github.com/gabrielsk12/saveslots/releases"), "mod settings should point players to the new GitHub releases page");
+    AssertFalse(saveSlots.Contains("REPORT BUG") || saveSlots.Contains("OpenBugReport"), "native MSCLoader bug reports should come from MSCLoader metadata, not a custom settings button");
     AssertTrue(saveSlots.Contains("gabriel_sk"), "mod settings should include the Discord contact");
     AssertFalse(saveSlots.Contains("discord.com/users/gabriel_sk"), "Discord contact button should not open an invalid Discord user URL");
     AssertFalse(saveSlots.Contains("Settings.AddButton(\"<color=#52D6FF>gabriel_sk</color>"), "Discord contact should not be a settings button");
