@@ -1,11 +1,5 @@
-using SaveSlotsMWC.Core;
-
 var tests = new List<(string Name, Action Body)>
 {
-    ("defaults to Save1 when metadata is missing", DefaultsToSave1),
-    ("switching to a new slot backs up active files and preserves shared options", SwitchToNewSlotCreatesBackupAndCopiesOptions),
-    ("switching to an existing slot copies slot files and skips editor backups by default", SwitchToExistingSlotSkipsBackups),
-    ("switching with backup copy enabled includes editor backups", SwitchWithBackupsEnabledIncludesBackups),
     ("built mod does not reference forbidden non-MSCLoader assemblies", BuiltModDoesNotReferenceForbiddenLoaders),
     ("ported original SaveSlots DLL is MSCLoader-only", PortedOriginalSaveSlotsIsMSCLoaderOnly),
     ("ported original initializes current empty slot on click", PortedOriginalInitializesCurrentEmptySlotOnClick),
@@ -15,6 +9,8 @@ var tests = new List<(string Name, Action Body)>
     ("ported original switches saves without auto-loading", PortedOriginalSwitchesSavesWithoutAutoLoading),
     ("ported original hides Continue for empty saves and loading", PortedOriginalHidesContinueForEmptySavesAndLoading),
     ("ported original refreshes Continue from selected slot every frame", PortedOriginalRefreshesContinueFromSelectedSlotEveryFrame),
+    ("ported original reconciles active profile with selected slot", PortedOriginalReconcilesActiveProfileWithSelectedSlot),
+    ("ported original controls the exact MWC Continue object", PortedOriginalControlsExactMwcContinueObject),
     ("ported original keeps delete confirmation above save UI", PortedOriginalKeepsDeleteConfirmationAboveSaveUi),
     ("ported original does not persist empty profile junk", PortedOriginalDoesNotPersistEmptyProfileJunk),
     ("ported original deletes active and inactive profiles completely", PortedOriginalDeletesProfilesCompletely),
@@ -25,6 +21,7 @@ var tests = new List<(string Name, Action Body)>
     ("ported original public branding is Gabriel_SK-only", PortedOriginalPublicBrandingIsGabrielOnly),
     ("ported original keeps normal console logging quiet", PortedOriginalKeepsNormalConsoleLoggingQuiet),
     ("ported original avoids shell execution and self-modifying update code", PortedOriginalAvoidsUnsafeUpdaterBehavior),
+    ("obsolete SaveSlotsMWC GUI mod is not built or shipped", ObsoleteGuiModIsNotBuiltOrShipped),
 };
 
 var failures = 0;
@@ -45,76 +42,10 @@ foreach (var test in tests)
 
 return failures == 0 ? 0 : 1;
 
-static void DefaultsToSave1()
-{
-    using var temp = new TempSaveTree();
-    var manager = new SaveSlotManager(temp.ActivePath, temp.SaveRoot);
-
-    AssertEqual("Save1", manager.GetCurrentSlotName());
-}
-
-static void SwitchToNewSlotCreatesBackupAndCopiesOptions()
-{
-    using var temp = new TempSaveTree();
-    File.WriteAllText(Path.Combine(temp.ActivePath, "savefile.txt"), "active save");
-    File.WriteAllText(Path.Combine(temp.ActivePath, "options.txt"), "active options");
-    File.WriteAllText(Path.Combine(temp.ActivePath, "defaultES2File_backup01.bak"), "skip");
-    Directory.CreateDirectory(Path.Combine(temp.ActivePath, "nested"));
-    File.WriteAllText(Path.Combine(temp.ActivePath, "nested", "part.txt"), "nested");
-
-    Directory.CreateDirectory(temp.OptionsPath);
-    File.WriteAllText(Path.Combine(temp.OptionsPath, "options.txt"), "shared options");
-
-    var manager = new SaveSlotManager(temp.ActivePath, temp.SaveRoot);
-    var result = manager.SwitchToSlot("Save2", new SaveSlotOptions { SynchronizeOptions = true });
-
-    AssertFalse(result.ContinueAvailable, "new slot should disable Continue");
-    AssertFile(Path.Combine(temp.SlotsPath, "Save1", "savefile.txt"), "active save");
-    AssertFile(Path.Combine(temp.SlotsPath, "Save1", "nested", "part.txt"), "nested");
-    AssertFalse(File.Exists(Path.Combine(temp.SlotsPath, "Save1", "defaultES2File_backup01.bak")), "backup file should be skipped");
-    AssertFile(Path.Combine(temp.SaveRoot, "SAVE SLOTS BACKUP", "savefile.txt"), "active save");
-    AssertFile(Path.Combine(temp.ActivePath, "options.txt"), "active options");
-    AssertEqual("Save2", manager.GetCurrentSlotName());
-}
-
-static void SwitchToExistingSlotSkipsBackups()
-{
-    using var temp = new TempSaveTree();
-    SaveSlotMetadataStore.Save(Path.Combine(temp.ActivePath, SaveSlotManager.MetadataFileName), new SaveSlotMetadata("Save1", DateTime.Now));
-    File.WriteAllText(Path.Combine(temp.ActivePath, "savefile.txt"), "save one");
-    Directory.CreateDirectory(Path.Combine(temp.SlotsPath, "Save2"));
-    File.WriteAllText(Path.Combine(temp.SlotsPath, "Save2", "savefile.txt"), "save two");
-    File.WriteAllText(Path.Combine(temp.SlotsPath, "Save2", "defaultES2File_backup01.bak"), "do not copy");
-    Directory.CreateDirectory(Path.Combine(temp.SlotsPath, "Save2", "sub"));
-    File.WriteAllText(Path.Combine(temp.SlotsPath, "Save2", "sub", "item.txt"), "slot nested");
-
-    var manager = new SaveSlotManager(temp.ActivePath, temp.SaveRoot);
-    var result = manager.SwitchToSlot("Save2", new SaveSlotOptions());
-
-    AssertTrue(result.ContinueAvailable, "existing MWC savefile should allow Continue");
-    AssertFile(Path.Combine(temp.ActivePath, "savefile.txt"), "save two");
-    AssertFalse(File.Exists(Path.Combine(temp.ActivePath, "defaultES2File_backup01.bak")), "backup file should be skipped");
-    AssertFile(Path.Combine(temp.ActivePath, "sub", "item.txt"), "slot nested");
-    AssertEqual("Save2", manager.GetCurrentSlotName());
-}
-
-static void SwitchWithBackupsEnabledIncludesBackups()
-{
-    using var temp = new TempSaveTree();
-    Directory.CreateDirectory(Path.Combine(temp.SlotsPath, "Save2"));
-    File.WriteAllText(Path.Combine(temp.SlotsPath, "Save2", "savefile.txt"), "save two");
-    File.WriteAllText(Path.Combine(temp.SlotsPath, "Save2", "defaultES2File_backup01.bak"), "copy me");
-
-    var manager = new SaveSlotManager(temp.ActivePath, temp.SaveRoot);
-    manager.SwitchToSlot("Save2", new SaveSlotOptions { CopyEditorBackups = true });
-
-    AssertFile(Path.Combine(temp.ActivePath, "defaultES2File_backup01.bak"), "copy me");
-}
-
 static void BuiltModDoesNotReferenceForbiddenLoaders()
 {
     var root = FindWorkspaceRoot();
-    var dll = Path.Combine(root, "dist", "SaveSlotsMWC.dll");
+    var dll = Path.Combine(root, "dist", "SaveSlots.dll");
     if (!File.Exists(dll))
     {
         throw new Exception("Build the mod before running this check: " + dll);
@@ -266,8 +197,9 @@ static void PortedOriginalRefreshesContinueFromSelectedSlotEveryFrame()
     var slotsManager = RunIlSpy(dll, "SaveSlots.SlotsManager");
     var saveSlots = RunIlSpy(dll, "SaveSlots.SaveSlots");
     AssertTrue(slotsManager.Contains("private void LateUpdate()") && slotsManager.Contains("RefreshContinueButtonFromSelectedSlot();"), "Continue visibility must be corrected every Unity frame after menu scripts can change it");
-    AssertTrue(slotsManager.Contains("ShouldShowContinueForSelectedSlot") && slotsManager.Contains("Path.Combine(SaveSlotsFolder, CurrentSaveLoadedName())"), "Continue visibility should be based on selected slot savefile.txt, not only active folder state");
+    AssertTrue(slotsManager.Contains("ShouldShowContinueForSelectedSlot") && slotsManager.Contains("ActiveProfileMatchesSelectedSlot") && slotsManager.Contains("GetActiveProfileSlotName"), "Continue visibility should require the active MWC profile to match the selected slot");
     AssertTrue(slotsManager.Contains("SetContinueVisible(ShouldShowContinueForSelectedSlot())"), "per-frame Continue refresh should only set visibility from selected slot state");
+    AssertFalse(slotsManager.Contains("UpdateContinueButton(HasPlayableSave"), "Continue updates should require the active profile metadata to match the selected slot, not only savefile.txt");
     AssertFalse(slotsManager.Contains("if (continueRefreshEnabled == enabled)"), "SetContinueRefreshEnabled(true) must refresh every call because SlotsManager can live on an inactive canvas");
     var refreshStart = slotsManager.IndexOf("internal void RefreshContinueButtonFromSelectedSlot()", StringComparison.Ordinal);
     var refreshEnd = slotsManager.IndexOf("private bool ShouldShowContinueForSelectedSlot()", StringComparison.Ordinal);
@@ -276,6 +208,36 @@ static void PortedOriginalRefreshesContinueFromSelectedSlotEveryFrame()
     AssertFalse(refreshBody.Contains("DirectoryCopy") || refreshBody.Contains("DeleteProfileContents") || refreshBody.Contains("RestoreSelectedSlotToActiveProfile"), "per-frame Continue refresh must not copy, delete, or restore save files");
     AssertTrue(slotsManager.Contains("continueButtonCache") && slotsManager.Contains("nextContinueButtonSearchUtc"), "Continue button lookup should be cached instead of scanning every frame");
     AssertTrue(saveSlots.Contains("SetContinueRefreshEnabled(!gameLoaded)") || saveSlots.Contains("SetContinueRefreshEnabled(value: !gameLoaded)"), "SaveSlots.Update should drive refresh even when the Save Slots canvas path is not running");
+}
+
+static void PortedOriginalReconcilesActiveProfileWithSelectedSlot()
+{
+    var root = FindWorkspaceRoot();
+    var dll = Path.Combine(root, "dist", "SaveSlots.dll");
+    if (!File.Exists(dll))
+    {
+        throw new Exception("Build the original SaveSlots port before running this check: " + dll);
+    }
+
+    var slotsManager = RunIlSpy(dll, "SaveSlots.SlotsManager");
+    AssertTrue(slotsManager.Contains("ReconcileActiveProfileWithSelectedSlot"), "menu load should reconcile the active MWC profile with the selected SaveSlots profile");
+    AssertTrue(slotsManager.Contains("ActiveProfileMatchesSelectedSlot"), "Continue visibility should require the active profile metadata to match the selected slot");
+    AssertTrue(slotsManager.Contains("GetActiveProfileSlotName"), "slot switching should know which slot the current active profile really belongs to");
+    AssertFalse(slotsManager.Contains("return !Directory.Exists(selectedSlotPath) && HasPlayableSave(Application.persistentDataPath)"), "empty selected slots must not show Continue just because another active save exists");
+}
+
+static void PortedOriginalControlsExactMwcContinueObject()
+{
+    var root = FindWorkspaceRoot();
+    var dll = Path.Combine(root, "dist", "SaveSlots.dll");
+    if (!File.Exists(dll))
+    {
+        throw new Exception("Build the original SaveSlots port before running this check: " + dll);
+    }
+
+    var slotsManager = RunIlSpy(dll, "SaveSlots.SlotsManager");
+    AssertTrue(slotsManager.Contains("Buttons/ButtonContinue"), "Continue lookup should use MWC's exact Interface/Buttons/ButtonContinue path");
+    AssertTrue(slotsManager.Contains("return ((Component)val).gameObject") || slotsManager.Contains("return ((Component)continueTransform).gameObject"), "Continue visibility should set the exact ButtonContinue GameObject like the original MSC version");
 }
 
 static void PortedOriginalKeepsDeleteConfirmationAboveSaveUi()
@@ -306,7 +268,7 @@ static void PortedOriginalDoesNotPersistEmptyProfileJunk()
     AssertTrue(slotsManager.Contains("ActiveSlot.txt") && slotsManager.Contains("WriteActiveSlotMarker"), "selected empty slots should be remembered outside the active save folder");
     AssertTrue(slotsManager.Contains("PersistActiveSaveIfChanged") && slotsManager.Contains("ReplaceSlotFolderFromActive"), "new game saves should be mirrored into the selected slot after savefile.txt appears");
     AssertTrue(slotsManager.Contains("DeleteEmptySlotFolder") && slotsManager.Contains("DeleteProfileContents"), "empty slots should not keep Mods.txt, steam_autocloud.vdf, or SaveSlots.xml as fake saves");
-    AssertTrue(slotsManager.Contains("HasPlayableSave(Application.persistentDataPath)") && slotsManager.Contains("SetContinueVisible(HasPlayableSave(Application.persistentDataPath))"), "Continue should be recalculated from the real active savefile.txt");
+    AssertTrue(slotsManager.Contains("HasPlayableSave(Application.persistentDataPath)") && slotsManager.Contains("ActiveProfileMatchesSelectedSlot"), "Continue should be recalculated from the real active savefile.txt and active slot metadata");
 }
 
 static void PortedOriginalDeletesProfilesCompletely()
@@ -442,12 +404,13 @@ static void PortedOriginalAvoidsUnsafeUpdaterBehavior()
     AssertFalse(ContainsAscii(bytes, "System.IO.Compression.ZipFile"), "GitHub update support should not self-extract or replace DLLs inside the game");
 }
 
-static void AssertEqual<T>(T expected, T actual)
+static void ObsoleteGuiModIsNotBuiltOrShipped()
 {
-    if (!EqualityComparer<T>.Default.Equals(expected, actual))
-    {
-        throw new Exception($"Expected {expected}, got {actual}");
-    }
+    var root = FindWorkspaceRoot();
+    var solution = File.ReadAllText(Path.Combine(root, "SaveSlotsMWC.sln"));
+    AssertFalse(solution.Contains("SaveSlotsMWC.Mod"), "solution should not build the obsolete immediate-mode GUI mod");
+    AssertFalse(solution.Contains("SaveSlotsMWC.Core"), "solution should not build the obsolete standalone save-slot core");
+    AssertFalse(File.Exists(Path.Combine(root, "dist", "SaveSlotsMWC.dll")), "dist should not contain the obsolete SaveSlotsMWC.dll");
 }
 
 static void AssertTrue(bool value, string message)
@@ -458,12 +421,6 @@ static void AssertTrue(bool value, string message)
 static void AssertFalse(bool value, string message)
 {
     if (value) throw new Exception(message);
-}
-
-static void AssertFile(string path, string expected)
-{
-    if (!File.Exists(path)) throw new Exception($"Missing file: {path}");
-    AssertEqual(expected, File.ReadAllText(path));
 }
 
 static string FindWorkspaceRoot()
@@ -559,27 +516,4 @@ static string RunIlSpy(string assemblyPath, string typeName)
     }
 
     return output;
-}
-
-internal sealed class TempSaveTree : IDisposable
-{
-    public string Root { get; } = Path.Combine(Path.GetTempPath(), "SaveSlotsMWCTests", Guid.NewGuid().ToString("N"));
-    public string SaveRoot => Path.Combine(Root, "Amistech");
-    public string ActivePath => Path.Combine(SaveRoot, "My Winter Car");
-    public string SlotsPath => Path.Combine(SaveRoot, "SaveSlots");
-    public string OptionsPath => Path.Combine(SlotsPath, "Options");
-
-    public TempSaveTree()
-    {
-        Directory.CreateDirectory(ActivePath);
-        Directory.CreateDirectory(SlotsPath);
-    }
-
-    public void Dispose()
-    {
-        if (Directory.Exists(Root))
-        {
-            Directory.Delete(Root, true);
-        }
-    }
 }

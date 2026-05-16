@@ -124,7 +124,7 @@ internal class SlotsManager : MonoBehaviour
 		}
 		GameObject interfaceObject = GameObject.Find("Interface");
 		buttonContinue = LocateContinueButton(interfaceObject);
-		RestoreSelectedSlotToActiveProfile();
+		ReconcileActiveProfileWithSelectedSlot();
 		SyncContinueButtonToActiveSave();
 		GameObject licence = Resources.FindObjectsOfTypeAll<GameObject>().FirstOrDefault((GameObject g) => ((UnityObject)g).name == "Licence");
 		if ((UnityObject)(object)licence != (UnityObject)null && (UnityObject)(object)licence.GetComponent<SaveSlotsLicenceBehaviour>() == (UnityObject)null)
@@ -299,12 +299,24 @@ internal class SlotsManager : MonoBehaviour
 		selectedSlotRestoreFailed = false;
 		if (currentSlotName == sender.SlotFileName)
 		{
-			InitializeCurrentEmptySlot(sender);
+			ReconcileActiveProfileWithSelectedSlot();
+			sender.LoadSaveData();
+			UpdateContinueButton(ShouldShowContinueForSelectedSlot());
 			return;
 		}
 		try
 		{
-			StoreActiveProfileInSlot(currentSlotName);
+			if (HasPlayableSave(activePath))
+			{
+				string activeProfileSlotName = GetActiveProfileSlotName();
+				StoreActiveProfileInSlot(!string.IsNullOrEmpty(activeProfileSlotName) ? activeProfileSlotName : currentSlotName);
+			}
+			else
+			{
+				DeleteProfileContents(activePath, preserveSharedOptions: true);
+				Directory.CreateDirectory(activePath);
+				CopyOptionsToActiveSave(activePath);
+			}
 		}
 		catch (Exception ex)
 		{
@@ -342,7 +354,7 @@ internal class SlotsManager : MonoBehaviour
 				DeleteFileSafe(Path.Combine(activePath, "SaveSlots.xml"));
 			}
 			sender.LoadSaveData();
-			UpdateContinueButton(HasPlayableSave(activePath));
+			UpdateContinueButton(ShouldShowContinueForSelectedSlot());
 		}
 		catch (Exception ex2)
 		{
@@ -357,7 +369,7 @@ internal class SlotsManager : MonoBehaviour
 		WriteActiveSlotMarker(sender.SlotFileName);
 		if (File.Exists(saveSlotsData) && HasPlayableSave(Application.persistentDataPath))
 		{
-			SetContinueVisible(HasPlayableSave(Application.persistentDataPath));
+			UpdateContinueButton(ShouldShowContinueForSelectedSlot());
 			return false;
 		}
 		if (HasActiveSaveData())
@@ -366,7 +378,7 @@ internal class SlotsManager : MonoBehaviour
 			if (result)
 			{
 				sender.LoadSaveData();
-				SetContinueVisible(File.Exists(defaultSaveData));
+				UpdateContinueButton(ShouldShowContinueForSelectedSlot());
 			}
 			return result;
 		}
@@ -700,39 +712,105 @@ internal class SlotsManager : MonoBehaviour
 
 	private bool ShouldShowContinueForSelectedSlot()
 	{
-		string selectedSlotPath = Path.Combine(SaveSlotsFolder, CurrentSaveLoadedName());
-		if (HasPlayableSave(selectedSlotPath))
-		{
-			return true;
-		}
-		return !Directory.Exists(selectedSlotPath) && HasPlayableSave(Application.persistentDataPath);
+		return HasPlayableSave(Application.persistentDataPath) && ActiveProfileMatchesSelectedSlot(CurrentSaveLoadedName());
 	}
 
-	private void RestoreSelectedSlotToActiveProfile()
+	private bool ActiveProfileMatchesSelectedSlot(string selectedSlot)
 	{
-		if (selectedSlotRestoreFailed || HasPlayableSave(Application.persistentDataPath))
+		string activeProfileSlotName = GetActiveProfileSlotName();
+		return !string.IsNullOrEmpty(activeProfileSlotName) && string.Equals(activeProfileSlotName, NormalizeSlotName(selectedSlot), StringComparison.OrdinalIgnoreCase);
+	}
+
+	private string GetActiveProfileSlotName()
+	{
+		try
+		{
+			if (!File.Exists(Path.Combine(Application.persistentDataPath, "SaveSlots.xml")))
+			{
+				return null;
+			}
+			SaveData saveData = ModSave.Load<SaveData>("SaveSlots", "");
+			return saveData != null && !string.IsNullOrEmpty(saveData.slotName) ? NormalizeSlotName(saveData.slotName) : null;
+		}
+		catch (Exception ex)
+		{
+			ModConsole.LogError("Save Slots could not read active profile metadata.\n" + ex);
+			return null;
+		}
+	}
+
+	private bool ShouldSynchronizeOptions()
+	{
+		return SaveSlots.SynchronizeOptions == null || SaveSlots.SynchronizeOptions.GetValue();
+	}
+
+	private void ReconcileActiveProfileWithSelectedSlot()
+	{
+		if (selectedSlotRestoreFailed)
 		{
 			return;
 		}
 		string currentSlotName = CurrentSaveLoadedName();
 		string slotPath = Path.Combine(SaveSlotsFolder, currentSlotName);
-		if (!HasPlayableSave(slotPath))
-		{
-			return;
-		}
 		try
 		{
-			CopyActiveOptionsToSharedFolder();
-			DeleteProfileContents(Application.persistentDataPath, preserveSharedOptions: true);
-			Directory.CreateDirectory(Application.persistentDataPath);
-			DirectoryCopy(slotPath, Application.persistentDataPath, copySubDirs: true);
-			if (SaveSlots.SynchronizeOptions.GetValue())
+			string activeProfileSlotName = GetActiveProfileSlotName();
+			bool activeProfileHasSave = HasPlayableSave(Application.persistentDataPath);
+			bool activeProfileMatchesSelectedSlot = activeProfileHasSave && ActiveProfileMatchesSelectedSlot(currentSlotName);
+			bool selectedSlotHasSave = HasPlayableSave(slotPath) || activeProfileMatchesSelectedSlot;
+			if (selectedSlotHasSave)
 			{
-				CopyOptionsToActiveSave(Application.persistentDataPath);
+				if (activeProfileHasSave && !ActiveProfileMatchesSelectedSlot(currentSlotName))
+				{
+					if (!string.IsNullOrEmpty(activeProfileSlotName) && !string.Equals(activeProfileSlotName, currentSlotName, StringComparison.OrdinalIgnoreCase))
+					{
+						StoreActiveProfileInSlot(activeProfileSlotName);
+					}
+					else
+					{
+						CopyActiveOptionsToSharedFolder();
+						MoveActiveSaveToEmergencyBackup();
+						Directory.CreateDirectory(Application.persistentDataPath);
+					}
+				}
+				if (!HasPlayableSave(Application.persistentDataPath) || !ActiveProfileMatchesSelectedSlot(currentSlotName))
+				{
+					CopyActiveOptionsToSharedFolder();
+					DeleteProfileContents(Application.persistentDataPath, preserveSharedOptions: true);
+					Directory.CreateDirectory(Application.persistentDataPath);
+					DirectoryCopy(slotPath, Application.persistentDataPath, copySubDirs: true);
+					if (ShouldSynchronizeOptions())
+					{
+						CopyOptionsToActiveSave(Application.persistentDataPath);
+					}
+					ModSave.Save<SaveData>("SaveSlots", new SaveData(currentSlotName, DateTime.Now), (string)null);
+					lastPersistedActiveSaveWriteUtc = File.GetLastWriteTimeUtc(Path.Combine(Application.persistentDataPath, MwcSaveFileName));
+				}
+				WriteActiveSlotMarker(currentSlotName);
+				return;
 			}
+			if (activeProfileHasSave)
+			{
+				if (!string.IsNullOrEmpty(activeProfileSlotName) && !string.Equals(activeProfileSlotName, currentSlotName, StringComparison.OrdinalIgnoreCase))
+				{
+					StoreActiveProfileInSlot(activeProfileSlotName);
+				}
+				else
+				{
+					CopyActiveOptionsToSharedFolder();
+					MoveActiveSaveToEmergencyBackup();
+					Directory.CreateDirectory(Application.persistentDataPath);
+				}
+			}
+			DeleteEmptySlotFolder(slotPath);
+			if (!Directory.Exists(Application.persistentDataPath))
+			{
+				Directory.CreateDirectory(Application.persistentDataPath);
+			}
+			DeleteProfileContents(Application.persistentDataPath, preserveSharedOptions: true);
+			CopyOptionsToActiveSave(Application.persistentDataPath);
+			DeleteFileSafe(Path.Combine(Application.persistentDataPath, "SaveSlots.xml"));
 			WriteActiveSlotMarker(currentSlotName);
-			ModSave.Save<SaveData>("SaveSlots", new SaveData(currentSlotName, DateTime.Now), (string)null);
-			lastPersistedActiveSaveWriteUtc = File.GetLastWriteTimeUtc(Path.Combine(Application.persistentDataPath, MwcSaveFileName));
 		}
 		catch (Exception ex)
 		{
@@ -835,10 +913,9 @@ internal class SlotsManager : MonoBehaviour
 			return null;
 		}
 		Transform continueTransform = interfaceObject.transform.Find("Buttons/ButtonContinue");
-		GameObject directButton = ResolveButtonObject((UnityObject)(object)continueTransform != (UnityObject)null ? ((Component)continueTransform).gameObject : null);
-		if ((UnityObject)(object)directButton != (UnityObject)null)
+		if ((UnityObject)(object)continueTransform != (UnityObject)null)
 		{
-			return directButton;
+			return ((Component)continueTransform).gameObject;
 		}
 		Button[] buttons = interfaceObject.GetComponentsInChildren<Button>(true);
 		foreach (Button button in buttons)
@@ -850,26 +927,6 @@ internal class SlotsManager : MonoBehaviour
 			}
 		}
 		return null;
-	}
-
-	private GameObject ResolveButtonObject(GameObject candidate)
-	{
-		if ((UnityObject)(object)candidate == (UnityObject)null)
-		{
-			return null;
-		}
-		Button button = candidate.GetComponent<Button>();
-		if ((UnityObject)(object)button != (UnityObject)null)
-		{
-			return candidate;
-		}
-		button = candidate.GetComponentInParent<Button>();
-		if ((UnityObject)(object)button != (UnityObject)null)
-		{
-			return ((Component)button).gameObject;
-		}
-		button = candidate.GetComponentsInChildren<Button>(true).FirstOrDefault();
-		return (UnityObject)(object)button != (UnityObject)null ? ((Component)button).gameObject : null;
 	}
 
 	private string GetButtonSearchText(GameObject buttonObject)
@@ -912,7 +969,7 @@ internal class SlotsManager : MonoBehaviour
 		}
 		slotBehaviour.UpdateInfoData(isActive: false, "?", 0f, mortal: false, "UNKNOWN", "NEVER");
 		UpdateInfoOfAllSaves();
-		UpdateContinueButton(HasPlayableSave(Application.persistentDataPath));
+		UpdateContinueButton(ShouldShowContinueForSelectedSlot());
 	}
 
 	private void DeleteCurrentActiveSlot(SlotBehaviour slotBehaviour)
