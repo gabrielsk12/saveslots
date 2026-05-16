@@ -80,6 +80,7 @@ public class SaveSlots : Mod
 	public override void ModSetup()
 	{
 		instance = this;
+		SaveSlotsDiagnosticLog.Log("SaveSlots.ModSetup", "Registering MSCLoader callbacks. version=" + Version);
 		SetupFunction(Setup.OnMenuLoad, OnMenuLoad);
 		SetupFunction(Setup.OnLoad, OnLoad);
 		SetupFunction(Setup.OnSave, OnSave);
@@ -91,9 +92,14 @@ public class SaveSlots : Mod
 
 	internal static void NotifyLoadingStarted()
 	{
+		SaveSlotsDiagnosticLog.Log("SaveSlots.NotifyLoadingStarted", "Loading notification received.");
 		if (instance != null)
 		{
 			instance.BeginLoadingMode();
+		}
+		else
+		{
+			SaveSlotsDiagnosticLog.Log("SaveSlots.NotifyLoadingStarted", "Ignored because SaveSlots instance is null.");
 		}
 	}
 
@@ -187,6 +193,7 @@ public class SaveSlots : Mod
 			}
 			catch (Exception ex)
 			{
+				SaveSlotsDiagnosticLog.LogException("SaveSlots.CheckForUpdates failed", ex);
 				ModConsole.LogError("Save Slots update check failed:\n" + ex);
 				message = "Could not check GitHub releases. Check output_log.txt or open GitHub Releases manually.";
 			}
@@ -323,6 +330,7 @@ public class SaveSlots : Mod
 		}
 		catch (Exception ex)
 		{
+			SaveSlotsDiagnosticLog.LogException("SaveSlots.ApplyCustomScreenshotToCurrentSave failed", ex);
 			ModConsole.LogError("Save Slots custom screenshot failed:\n" + ex);
 			ModUI.ShowMessage("Could not copy the custom screenshot. Check output_log.txt for details.", "Save Slots");
 		}
@@ -330,6 +338,7 @@ public class SaveSlots : Mod
 
 	public void OnMenuLoad()
 	{
+		SaveSlotsDiagnosticLog.Log("SaveSlots.OnMenuLoad", "Menu load started.");
 		gameLoaded = false;
 		gameLoading = false;
 		string path = Path.Combine(GetGameRoot(), "ModLoaderSettings.ini");
@@ -347,13 +356,16 @@ public class SaveSlots : Mod
 		}
 		if (text.Contains("AppData/LocalLow/Amistech/My Winter Car"))
 		{
+			SaveSlotsDiagnosticLog.Log("SaveSlots.OnMenuLoad", "Mods folder is inside save location; showing warning. value=" + text);
 			ModPrompt.CreatePrompt("<color=yellow>Save Slots</color> can not work properly, if you have Mods installed in save location.\n\nPlease move your mods to other place.", "SAVE SLOTS: ERROR", null);
 		}
 		else if (!isDisabled)
 		{
+			SaveSlotsDiagnosticLog.Log("SaveSlots.OnMenuLoad", "Loading embedded SaveSlots canvas.");
 			AssetBundle val = LoadAssets.LoadBundle(EmbeddedResources.saveslots);
 			if ((UnityObject)(object)val == (UnityObject)null)
 			{
+				SaveSlotsDiagnosticLog.Log("SaveSlots.OnMenuLoad", "Embedded UI asset bundle returned null.");
 				ModConsole.Error("Save Slots failed to load embedded UI assets.");
 				return;
 			}
@@ -362,6 +374,7 @@ public class SaveSlots : Mod
 			val.Unload(false);
 			if ((UnityObject)(object)obj == (UnityObject)null)
 			{
+				SaveSlotsDiagnosticLog.Log("SaveSlots.OnMenuLoad", "SaveSlotsCanvas.prefab missing from bundle.");
 				ModConsole.Error("Save Slots embedded UI is missing SaveSlotsCanvas.prefab.");
 				return;
 			}
@@ -377,6 +390,11 @@ public class SaveSlots : Mod
 			}
 			EnsureClickSupport(saveSlotsCanvas, saveSlotsCanvasComponent);
 			UpdateMenuVisibility();
+			SaveSlotsDiagnosticLog.Log("SaveSlots.OnMenuLoad", "Menu load finished. canvasActive=" + saveSlotsCanvas.activeSelf);
+		}
+		else
+		{
+			SaveSlotsDiagnosticLog.Log("SaveSlots.OnMenuLoad", "Mod is disabled; canvas not created.");
 		}
 	}
 
@@ -500,12 +518,18 @@ public class SaveSlots : Mod
 
 	private void BeginLoadingMode()
 	{
+		if (!gameLoading)
+		{
+			SaveSlotsDiagnosticLog.Log("SaveSlots.BeginLoadingMode", "Entering loading mode.");
+		}
 		gameLoading = true;
 		HideSaveSlotsUi();
 	}
 
 	private void HideSaveSlotsUi()
 	{
+		bool canvasWasActive = (UnityObject)(object)saveSlotsCanvas != (UnityObject)null && saveSlotsCanvas.activeSelf;
+		bool raycasterWasEnabled = (UnityObject)(object)saveSlotsRaycaster != (UnityObject)null && saveSlotsRaycaster.enabled;
 		if (SlotsManager.Instance != null)
 		{
 			SlotsManager.Instance.HideContinueButton();
@@ -517,6 +541,10 @@ public class SaveSlots : Mod
 		if ((UnityObject)(object)saveSlotsRaycaster != (UnityObject)null)
 		{
 			saveSlotsRaycaster.enabled = false;
+		}
+		if (canvasWasActive || raycasterWasEnabled)
+		{
+			SaveSlotsDiagnosticLog.Log("SaveSlots.HideSaveSlotsUi", "Hidden UI. canvasWasActive=" + canvasWasActive + " raycasterWasEnabled=" + raycasterWasEnabled + " gameLoaded=" + gameLoaded + " gameLoading=" + gameLoading);
 		}
 	}
 
@@ -556,10 +584,27 @@ public class SaveSlots : Mod
 			}
 			if (gameObject.activeInHierarchy)
 			{
+				SaveSlotsDiagnosticLog.Log("SaveSlots.IsLoadingScreenActive", "Detected active Loading object: " + GetHierarchyPath(gameObject));
 				return true;
 			}
 		}
 		return false;
+	}
+
+	private string GetHierarchyPath(GameObject gameObject)
+	{
+		if ((UnityObject)(object)gameObject == (UnityObject)null)
+		{
+			return "<null>";
+		}
+		string path = ((UnityObject)gameObject).name;
+		Transform parent = gameObject.transform.parent;
+		while ((UnityObject)(object)parent != (UnityObject)null)
+		{
+			path = parent.name + "/" + path;
+			parent = parent.parent;
+		}
+		return path;
 	}
 
 	private void ApplyBlueTheme(GameObject root)
@@ -661,6 +706,7 @@ public class SaveSlots : Mod
 
 	public void OnLoad()
 	{
+		SaveSlotsDiagnosticLog.Log("SaveSlots.OnLoad", "MSCLoader OnLoad fired. Game has loaded.");
 		gameLoaded = true;
 		gameLoading = false;
 		HideSaveSlotsUi();
@@ -672,6 +718,7 @@ public class SaveSlots : Mod
 
 	public void OnSave()
 	{
+		SaveSlotsDiagnosticLog.Log("SaveSlots.OnSave", "Game save event fired.");
 		if (CreateScreenshotOnEachSave != null && CreateScreenshotOnEachSave.GetValue())
 		{
 			TakeScreenshot(enableGUI: false);

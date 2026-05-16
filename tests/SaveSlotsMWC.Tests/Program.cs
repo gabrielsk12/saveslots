@@ -8,6 +8,7 @@ var tests = new List<(string Name, Action Body)>
     ("ported original reads My Winter Car save metadata", PortedOriginalReadsMyWinterCarSaveMetadata),
     ("ported original switches saves without auto-loading", PortedOriginalSwitchesSavesWithoutAutoLoading),
     ("ported original hides Continue for empty saves and loading", PortedOriginalHidesContinueForEmptySavesAndLoading),
+    ("ported original writes its own diagnostic log", PortedOriginalWritesOwnDiagnosticLog),
     ("ported original refreshes Continue from selected slot every frame", PortedOriginalRefreshesContinueFromSelectedSlotEveryFrame),
     ("ported original reconciles active profile with selected slot", PortedOriginalReconcilesActiveProfileWithSelectedSlot),
     ("ported original controls the exact MWC Continue object", PortedOriginalControlsExactMwcContinueObject),
@@ -215,6 +216,30 @@ static void PortedOriginalRefreshesContinueFromSelectedSlotEveryFrame()
     AssertFalse(refreshBody.Contains("DirectoryCopy") || refreshBody.Contains("DeleteProfileContents") || refreshBody.Contains("RestoreSelectedSlotToActiveProfile"), "per-frame Continue refresh must not copy, delete, or restore save files");
     AssertTrue(slotsManager.Contains("continueButtonCache") && slotsManager.Contains("nextContinueButtonSearchUtc"), "Continue button lookup should be cached instead of scanning every frame");
     AssertTrue(saveSlots.Contains("SetContinueRefreshEnabled(!gameLoaded && !gameLoading)") || saveSlots.Contains("SetContinueRefreshEnabled(value: !gameLoaded && !gameLoading)"), "SaveSlots.Update should drive refresh while the menu is usable and stop it while MWC is loading");
+}
+
+static void PortedOriginalWritesOwnDiagnosticLog()
+{
+    var root = FindWorkspaceRoot();
+    var dll = Path.Combine(root, "dist", "SaveSlots.dll");
+    if (!File.Exists(dll))
+    {
+        throw new Exception("Build the original SaveSlots port before running this check: " + dll);
+    }
+
+    var logger = RunIlSpy(dll, "SaveSlots.SaveSlotsDiagnosticLog");
+    var saveSlots = RunIlSpy(dll, "SaveSlots.SaveSlots");
+    var slotsManager = RunIlSpy(dll, "SaveSlots.SlotsManager");
+    var slotBehaviour = RunIlSpy(dll, "SaveSlots.SlotBehaviour");
+    var buttonSaves = RunIlSpy(dll, "SaveSlots.ButtonSaves");
+    var continueGuard = RunIlSpy(dll, "SaveSlots.ContinueLoadButtonGuard");
+    AssertTrue(logger.Contains("SaveSlotsDebug.log"), "diagnostics should write to a SaveSlots-owned log file");
+    AssertTrue(logger.Contains("AppendAllText") && logger.Contains("RotateIfNeeded"), "diagnostics should append to a file and rotate before it grows forever");
+    AssertTrue(logger.Contains("Application.persistentDataPath") && logger.Contains("SaveSlots"), "diagnostic log should live near Save Slots data, not in the console");
+    AssertTrue(saveSlots.Contains("SaveSlotsDiagnosticLog.Log") && slotsManager.Contains("SaveSlotsDiagnosticLog.Log"), "main menu and backend state transitions should be logged");
+    AssertTrue(slotBehaviour.Contains("SaveSlotsDiagnosticLog.Log") && buttonSaves.Contains("SaveSlotsDiagnosticLog.Log") && continueGuard.Contains("SaveSlotsDiagnosticLog.Log"), "button and slot interactions should be logged");
+    AssertTrue(slotsManager.Contains("LogStateSnapshot"), "backend logs should include slot/save state snapshots for debugging load hangs");
+    AssertTrue(logger.Contains("LogException"), "diagnostics should capture exceptions into the own log file");
 }
 
 static void PortedOriginalReconcilesActiveProfileWithSelectedSlot()

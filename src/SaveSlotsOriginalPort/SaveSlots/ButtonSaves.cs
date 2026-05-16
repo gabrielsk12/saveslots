@@ -17,16 +17,20 @@ internal class ButtonSaves : MonoBehaviour
 
 	private void ToggleUI()
 	{
+		SaveSlotsDiagnosticLog.Log("ButtonSaves.ToggleUI", "Clicked Saves button.");
 		if ((Object)(object)saveUI == (Object)null)
 		{
+			SaveSlotsDiagnosticLog.Log("ButtonSaves.ToggleUI", "Ignored because saveUI is null.");
 			return;
 		}
 		if (SaveSlots.MenuInteractionBlocked())
 		{
 			saveUI.SetActive(false);
+			SaveSlotsDiagnosticLog.Log("ButtonSaves.ToggleUI", "Blocked because menu interaction is disabled during loading/gameplay.");
 			return;
 		}
 		saveUI.SetActive(!saveUI.activeSelf);
+		SaveSlotsDiagnosticLog.Log("ButtonSaves.ToggleUI", "Save UI active=" + saveUI.activeSelf);
 		if (saveUI.activeSelf && SlotsManager.Instance != null)
 		{
 			SlotsManager.Instance.UpdateInfoOfAllSaves();

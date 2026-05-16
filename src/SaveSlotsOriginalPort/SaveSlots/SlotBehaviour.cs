@@ -80,6 +80,7 @@ internal class SlotBehaviour : MonoBehaviour
 
 	private void OnButtonClick()
 	{
+		SaveSlotsDiagnosticLog.Log("SlotBehaviour.OnButtonClick", "Clicked " + slotFileName);
 		SlotsManager.Instance.UpdateSelectedButtons(this);
 		SlotsManager.Instance.LoadSave(this);
 	}
@@ -135,6 +136,7 @@ internal class SlotBehaviour : MonoBehaviour
 		string text = Path.Combine(ThisSavePath, MwcSaveFileName);
 		if (!Directory.Exists(ThisSavePath) || !File.Exists(text))
 		{
+			SaveSlotsDiagnosticLog.Log("SlotBehaviour.LoadSaveData", slotFileName + " is empty. path=" + ThisSavePath);
 			UpdateInfoData(isActive: false, "?", 0f, mortal: false, "UNKNOWN", "NEVER");
 			return;
 		}
@@ -170,6 +172,7 @@ internal class SlotBehaviour : MonoBehaviour
 		}
 		catch (Exception ex)
 		{
+			SaveSlotsDiagnosticLog.LogException("SlotBehaviour.HasTag " + saveFile + " tag=" + tag, ex);
 			ModConsole.LogError("Save Slots could not read tags from " + saveFile + "\n" + ex);
 			return false;
 		}
@@ -224,6 +227,7 @@ internal class SlotBehaviour : MonoBehaviour
 		}
 		catch (Exception ex)
 		{
+			SaveSlotsDiagnosticLog.LogException("SlotBehaviour.LoadPlayerPosition " + saveFile, ex);
 			ModConsole.LogError("Save Slots could not read PlayerTransform from " + saveFile + "\n" + ex);
 		}
 		return Vector3.zero;
@@ -241,6 +245,7 @@ internal class SlotBehaviour : MonoBehaviour
 		}
 		catch
 		{
+			SaveSlotsDiagnosticLog.Log("SlotBehaviour.LoadSaveDataInfo", "Could not read SaveSlots metadata for " + slotFileName + "; using savefile timestamp.");
 		}
 		return new SaveData(slotFileName, File.GetLastWriteTime(saveFile));
 	}

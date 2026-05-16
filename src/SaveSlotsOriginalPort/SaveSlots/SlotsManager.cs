@@ -47,6 +47,8 @@ internal class SlotsManager : MonoBehaviour
 
 	private string selectedSlotName;
 
+	private bool? lastContinueVisible;
+
 	private DateTime nextContinueButtonSearchUtc = DateTime.MinValue;
 
 	private DateTime lastPersistedActiveSaveWriteUtc = DateTime.MinValue;
@@ -99,6 +101,7 @@ internal class SlotsManager : MonoBehaviour
 
 	private void Awake()
 	{
+		SaveSlotsDiagnosticLog.Log("SlotsManager.Awake", "Initializing SlotsManager.");
 		instance = this;
 		slotBehaviours = new List<SlotBehaviour>();
 		colorActive = BlueActive;
@@ -126,6 +129,7 @@ internal class SlotsManager : MonoBehaviour
 		buttonContinue = LocateContinueButton(interfaceObject);
 		ReconcileActiveProfileWithSelectedSlot();
 		SyncContinueButtonToActiveSave();
+		LogStateSnapshot("SlotsManager.Awake complete");
 		GameObject licence = Resources.FindObjectsOfTypeAll<GameObject>().FirstOrDefault((GameObject g) => ((UnityObject)g).name == "Licence");
 		if ((UnityObject)(object)licence != (UnityObject)null && (UnityObject)(object)licence.GetComponent<SaveSlotsLicenceBehaviour>() == (UnityObject)null)
 		{
@@ -148,6 +152,10 @@ internal class SlotsManager : MonoBehaviour
 
 	internal void SetContinueRefreshEnabled(bool enabled)
 	{
+		if (continueRefreshEnabled != enabled)
+		{
+			SaveSlotsDiagnosticLog.Log("SlotsManager.SetContinueRefreshEnabled", "enabled=" + enabled);
+		}
 		if (applicationQuitting)
 		{
 			return;
@@ -297,11 +305,14 @@ internal class SlotsManager : MonoBehaviour
 		string activePath = Application.persistentDataPath;
 		string currentSlotName = CurrentSaveLoadedName();
 		selectedSlotRestoreFailed = false;
+		SaveSlotsDiagnosticLog.Log("SlotsManager.LoadSaveInternal", "Start. current=" + currentSlotName + " clicked=" + sender.SlotFileName);
+		LogStateSnapshot("Before LoadSaveInternal");
 		if (currentSlotName == sender.SlotFileName)
 		{
 			ReconcileActiveProfileWithSelectedSlot();
 			sender.LoadSaveData();
 			UpdateContinueButton(ShouldShowContinueForSelectedSlot());
+			LogStateSnapshot("Clicked current slot");
 			return;
 		}
 		try
@@ -320,11 +331,13 @@ internal class SlotsManager : MonoBehaviour
 		}
 		catch (Exception ex)
 		{
+			SaveSlotsDiagnosticLog.LogException("SlotsManager.LoadSaveInternal store current failed", ex);
 			FailSafe("SAVE SLOTS STORE CURRENT", activePath, ex);
 			return;
 		}
 		string targetSlotPath = Path.Combine(SaveSlotsFolder, sender.SlotFileName);
 		bool targetHasSave = HasPlayableSave(targetSlotPath);
+		SaveSlotsDiagnosticLog.Log("SlotsManager.LoadSaveInternal", "Target slot path=" + targetSlotPath + " targetHasSave=" + targetHasSave);
 		try
 		{
 			if (!targetHasSave)
@@ -355,15 +368,18 @@ internal class SlotsManager : MonoBehaviour
 			}
 			sender.LoadSaveData();
 			UpdateContinueButton(ShouldShowContinueForSelectedSlot());
+			LogStateSnapshot("After LoadSaveInternal");
 		}
 		catch (Exception ex2)
 		{
+			SaveSlotsDiagnosticLog.LogException("SlotsManager.LoadSaveInternal load target failed", ex2);
 			FailSafe("SAVE SLOTS LOAD TARGET", targetSlotPath, ex2);
 		}
 	}
 
 	private bool InitializeCurrentEmptySlot(SlotBehaviour sender)
 	{
+		SaveSlotsDiagnosticLog.Log("SlotsManager.InitializeCurrentEmptySlot", "sender=" + sender.SlotFileName);
 		string saveSlotsData = Path.Combine(Application.persistentDataPath, "SaveSlots.xml");
 		string defaultSaveData = Path.Combine(Application.persistentDataPath, MwcSaveFileName);
 		WriteActiveSlotMarker(sender.SlotFileName);
@@ -396,6 +412,7 @@ internal class SlotsManager : MonoBehaviour
 
 	private bool EnsureFirstInstallProfile()
 	{
+		SaveSlotsDiagnosticLog.Log("SlotsManager.EnsureFirstInstallProfile", "Checking first install profile.");
 		string saveSlotsData = Path.Combine(Application.persistentDataPath, "SaveSlots.xml");
 		if (File.Exists(saveSlotsData) || !HasPlayableSave(Application.persistentDataPath))
 		{
@@ -421,6 +438,7 @@ internal class SlotsManager : MonoBehaviour
 		}
 		catch (Exception ex)
 		{
+			SaveSlotsDiagnosticLog.LogException("SlotsManager.EnsureFirstInstallProfile failed", ex);
 			ModPrompt.CreatePrompt("Save Slots detected an existing save, but could not create a Save1 profile.\nYour active save was left in place and was not moved or deleted.\n\nAn exception has been saved into output_log.txt. Please send it to the mod author.", "Save Slots - First Install Safety", null);
 			ModConsole.LogError("SAVE SLOTS FIRST INSTALL\n" + ex);
 			return false;
@@ -466,6 +484,7 @@ internal class SlotsManager : MonoBehaviour
 	private void StoreActiveProfileInSlot(string slotName)
 	{
 		string normalizedSlotName = NormalizeSlotName(slotName);
+		SaveSlotsDiagnosticLog.Log("SlotsManager.StoreActiveProfileInSlot", "slot=" + normalizedSlotName);
 		WriteActiveSlotMarker(normalizedSlotName);
 		CopyActiveOptionsToSharedFolder();
 		string slotPath = Path.Combine(SaveSlotsFolder, normalizedSlotName);
@@ -512,6 +531,7 @@ internal class SlotsManager : MonoBehaviour
 
 	private void PrepareActiveProfileForSlotSwitch()
 	{
+		SaveSlotsDiagnosticLog.Log("SlotsManager.PrepareActiveProfileForSlotSwitch", "activeHasSave=" + HasPlayableSave(Application.persistentDataPath));
 		if (HasPlayableSave(Application.persistentDataPath))
 		{
 			MoveActiveSaveToEmergencyBackup();
@@ -563,6 +583,7 @@ internal class SlotsManager : MonoBehaviour
 
 	private void MoveActiveSaveToEmergencyBackup()
 	{
+		SaveSlotsDiagnosticLog.Log("SlotsManager.MoveActiveSaveToEmergencyBackup", "Moving active profile to " + BackupFolder);
 		ArchiveExistingBackupFolder();
 		if (Directory.Exists(BackupFolder))
 		{
@@ -667,6 +688,11 @@ internal class SlotsManager : MonoBehaviour
 
 	private void UpdateContinueButton(bool visible)
 	{
+		if (!lastContinueVisible.HasValue || lastContinueVisible.Value != visible)
+		{
+			SaveSlotsDiagnosticLog.Log("SlotsManager.UpdateContinueButton", "visible=" + visible + " selected=" + CurrentSaveLoadedName() + " activeProfile=" + GetActiveProfileSlotName());
+			lastContinueVisible = visible;
+		}
 		SetContinueVisible(visible);
 	}
 
@@ -746,8 +772,10 @@ internal class SlotsManager : MonoBehaviour
 
 	private void ReconcileActiveProfileWithSelectedSlot()
 	{
+		SaveSlotsDiagnosticLog.Log("SlotsManager.ReconcileActiveProfileWithSelectedSlot", "Start selected=" + CurrentSaveLoadedName());
 		if (selectedSlotRestoreFailed)
 		{
+			SaveSlotsDiagnosticLog.Log("SlotsManager.ReconcileActiveProfileWithSelectedSlot", "Skipped because previous restore failed.");
 			return;
 		}
 		string currentSlotName = CurrentSaveLoadedName();
@@ -815,6 +843,7 @@ internal class SlotsManager : MonoBehaviour
 		catch (Exception ex)
 		{
 			selectedSlotRestoreFailed = true;
+			SaveSlotsDiagnosticLog.LogException("SlotsManager.ReconcileActiveProfileWithSelectedSlot failed", ex);
 			FailSafe("SAVE SLOTS RESTORE SELECTED", slotPath, ex);
 		}
 	}
@@ -959,14 +988,48 @@ internal class SlotsManager : MonoBehaviour
 		return text.ToUpperInvariant();
 	}
 
+	private void LogStateSnapshot(string reason)
+	{
+		try
+		{
+			string activePath = Application.persistentDataPath;
+			string currentSlot = CurrentSaveLoadedName();
+			string activeMetadata = GetActiveProfileSlotName();
+			string saveFile = Path.Combine(activePath, MwcSaveFileName);
+			string metadataFile = Path.Combine(activePath, "SaveSlots.xml");
+			string slot1 = Path.Combine(SaveSlotsFolder, "Save1");
+			string slot2 = Path.Combine(SaveSlotsFolder, "Save2");
+			string slot3 = Path.Combine(SaveSlotsFolder, "Save3");
+			string message = "reason=" + reason
+				+ " selected=" + currentSlot
+				+ " activeMetadata=" + (activeMetadata ?? "<none>")
+				+ " activePath=" + activePath
+				+ " activeSavefile=" + File.Exists(saveFile)
+				+ " activeMetadataFile=" + File.Exists(metadataFile)
+				+ " activeSlotMarker=" + LoadActiveSlotMarker()
+				+ " Save1=" + HasPlayableSave(slot1)
+				+ " Save2=" + HasPlayableSave(slot2)
+				+ " Save3=" + HasPlayableSave(slot3)
+				+ " canvasExists=" + ((UnityObject)(object)Canvas() != (UnityObject)null);
+			SaveSlotsDiagnosticLog.Log("SlotsManager.LogStateSnapshot", message);
+		}
+		catch (Exception ex)
+		{
+			SaveSlotsDiagnosticLog.LogException("SlotsManager.LogStateSnapshot failed", ex);
+		}
+	}
+
 	private void FailSafe(string stage, string path, Exception ex)
 	{
+		SaveSlotsDiagnosticLog.LogException("SlotsManager.FailSafe " + stage + " path=" + path, ex);
+		LogStateSnapshot("FailSafe " + stage);
 		ModPrompt.CreatePrompt("Save Slots stopped switching saves to prevent data loss.\nYour previous save is still in the SaveSlots folder or emergency backup folder.\n\nAn exception has been saved into output_log.txt. Please send it to Gabriel_SK.", "Save Slots - Fatal Error", null);
 		ModConsole.LogError(stage + "\n" + path + "\n\n" + ex);
 	}
 
 	internal void DeleteSave(SlotBehaviour slotBehaviour)
 	{
+		SaveSlotsDiagnosticLog.Log("SlotsManager.DeleteSave", "slot=" + slotBehaviour.SlotFileName);
 		if ((UnityObject)(object)slotBehaviour == (UnityObject)(object)CurrentSaveLoaded())
 		{
 			DeleteCurrentActiveSlot(slotBehaviour);
@@ -985,6 +1048,7 @@ internal class SlotsManager : MonoBehaviour
 	private void DeleteCurrentActiveSlot(SlotBehaviour slotBehaviour)
 	{
 		string slotName = NormalizeSlotName(slotBehaviour.SlotFileName);
+		SaveSlotsDiagnosticLog.Log("SlotsManager.DeleteCurrentActiveSlot", "slot=" + slotName);
 		try
 		{
 			CopyActiveOptionsToSharedFolder();
@@ -1009,6 +1073,7 @@ internal class SlotsManager : MonoBehaviour
 		}
 		catch (Exception ex)
 		{
+			SaveSlotsDiagnosticLog.LogException("SlotsManager.DeleteCurrentActiveSlot failed", ex);
 			FailSafe("SAVE SLOTS DELETE CURRENT", slotName, ex);
 		}
 	}
