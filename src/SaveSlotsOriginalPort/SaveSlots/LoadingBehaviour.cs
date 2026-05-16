@@ -23,7 +23,6 @@ internal class LoadingBehaviour : MonoBehaviour
 		{
 			SaveSlotsDiagnosticLog.Log("LoadingBehaviour.OnEnable", "CurrentSaveLoaded returned null.");
 		}
-		SlotsManager.Instance.HideContinueButton();
 		GameObject canvas = SlotsManager.Instance.Canvas();
 		if ((Object)(object)canvas != (Object)null)
 		{

@@ -533,10 +533,6 @@ public class SaveSlots : Mod
 	{
 		bool canvasWasActive = (UnityObject)(object)saveSlotsCanvas != (UnityObject)null && saveSlotsCanvas.activeSelf;
 		bool raycasterWasEnabled = (UnityObject)(object)saveSlotsRaycaster != (UnityObject)null && saveSlotsRaycaster.enabled;
-		if (SlotsManager.Instance != null)
-		{
-			SlotsManager.Instance.HideContinueButton();
-		}
 		if ((UnityObject)(object)saveSlotsCanvas != (UnityObject)null && saveSlotsCanvas.activeSelf)
 		{
 			saveSlotsCanvas.SetActive(false);

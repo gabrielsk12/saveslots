@@ -179,7 +179,6 @@ static void PortedOriginalHidesContinueForEmptySavesAndLoading()
     var saveSlots = RunIlSpy(dll, "SaveSlots.SaveSlots");
     var loadingBehaviour = RunIlSpy(dll, "SaveSlots.LoadingBehaviour");
     var buttonSaves = RunIlSpy(dll, "SaveSlots.ButtonSaves");
-    var continueLoadButtonGuard = RunIlSpy(dll, "SaveSlots.ContinueLoadButtonGuard");
     AssertTrue(slotsManager.Contains("SetContinueVisible") && slotsManager.Contains("UpdateContinueButton"), "Continue visibility should go through one helper");
     AssertTrue(slotsManager.Contains("FindContinueButtons") && slotsManager.Contains("foreach (GameObject"), "all Continue button candidates should be updated, not only one cached object");
     AssertTrue(saveSlots.Contains("SetContinueRefreshEnabled"), "menu update should enable continuous Continue refresh");
@@ -187,10 +186,11 @@ static void PortedOriginalHidesContinueForEmptySavesAndLoading()
     AssertTrue(saveSlots.Contains("HideSaveSlotsUi") && (saveSlots.Contains("saveSlotsRaycaster.enabled = false") || saveSlots.Contains("((Behaviour)saveSlotsRaycaster).enabled = false")), "Save Slots canvas and raycaster should be hidden while the game is loading");
     AssertTrue(saveSlots.Contains("SetContinueRefreshEnabled(!gameLoaded && !gameLoading)"), "Continue refresh must stop while the loading screen is active");
     AssertTrue(buttonSaves.Contains("MenuInteractionBlocked"), "Saves button should ignore clicks while MWC is loading");
-    AssertTrue(slotsManager.Contains("ContinueLoadButtonGuard") && continueLoadButtonGuard.Contains("NotifyLoadingStarted"), "Continue click should immediately put Save Slots into loading mode");
+    AssertFalse(slotsManager.Contains("ContinueLoadButtonGuard"), "Save Slots must not add runtime listeners to MWC's Continue button because that can interrupt the game's own loading FSM");
+    AssertFalse(saveSlots.Contains("SlotsManager.Instance.HideContinueButton();"), "loading mode should not deactivate the game Continue button after click; only Save Slots UI should be hidden");
     AssertTrue(slotsManager.Contains("RefreshContinueButtonFromSelectedSlot"), "clicking the current slot should refresh Continue from the selected profile state");
     AssertTrue(slotsManager.Contains("HideContinueButton"), "SlotsManager should expose a loading-safe Continue hide helper");
-    AssertTrue(loadingBehaviour.Contains("NotifyLoadingStarted") && loadingBehaviour.Contains("HideContinueButton"), "loading screen should hide the game Continue button and notify SaveSlots before OnLoad");
+    AssertTrue(loadingBehaviour.Contains("NotifyLoadingStarted") && !loadingBehaviour.Contains("HideContinueButton"), "loading screen should notify SaveSlots before OnLoad without touching MWC's own Continue button");
 }
 
 static void PortedOriginalRefreshesContinueFromSelectedSlotEveryFrame()
@@ -232,12 +232,11 @@ static void PortedOriginalWritesOwnDiagnosticLog()
     var slotsManager = RunIlSpy(dll, "SaveSlots.SlotsManager");
     var slotBehaviour = RunIlSpy(dll, "SaveSlots.SlotBehaviour");
     var buttonSaves = RunIlSpy(dll, "SaveSlots.ButtonSaves");
-    var continueGuard = RunIlSpy(dll, "SaveSlots.ContinueLoadButtonGuard");
     AssertTrue(logger.Contains("SaveSlotsDebug.log"), "diagnostics should write to a SaveSlots-owned log file");
     AssertTrue(logger.Contains("AppendAllText") && logger.Contains("RotateIfNeeded"), "diagnostics should append to a file and rotate before it grows forever");
     AssertTrue(logger.Contains("Application.persistentDataPath") && logger.Contains("SaveSlots"), "diagnostic log should live near Save Slots data, not in the console");
     AssertTrue(saveSlots.Contains("SaveSlotsDiagnosticLog.Log") && slotsManager.Contains("SaveSlotsDiagnosticLog.Log"), "main menu and backend state transitions should be logged");
-    AssertTrue(slotBehaviour.Contains("SaveSlotsDiagnosticLog.Log") && buttonSaves.Contains("SaveSlotsDiagnosticLog.Log") && continueGuard.Contains("SaveSlotsDiagnosticLog.Log"), "button and slot interactions should be logged");
+    AssertTrue(slotBehaviour.Contains("SaveSlotsDiagnosticLog.Log") && buttonSaves.Contains("SaveSlotsDiagnosticLog.Log"), "button and slot interactions should be logged");
     AssertTrue(slotsManager.Contains("LogStateSnapshot"), "backend logs should include slot/save state snapshots for debugging load hangs");
     AssertTrue(saveSlots.Contains("LogLoadingHeartbeat") && saveSlots.Contains("nextLoadingHeartbeatUtc"), "loading mode should keep writing heartbeat diagnostics while MWC is stuck before OnLoad");
     AssertTrue(saveSlots.Contains("Application.loadedLevelName") && saveSlots.Contains("Time.realtimeSinceStartup"), "loading heartbeat should include scene and runtime timing details");
