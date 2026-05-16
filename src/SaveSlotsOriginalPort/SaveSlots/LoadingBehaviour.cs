@@ -6,6 +6,7 @@ internal class LoadingBehaviour : MonoBehaviour
 {
 	private void OnEnable()
 	{
+		SaveSlots.NotifyLoadingStarted();
 		if (SlotsManager.Instance == null)
 		{
 			return;

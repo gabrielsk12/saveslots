@@ -904,6 +904,16 @@ internal class SlotsManager : MonoBehaviour
 			return;
 		}
 		continueButtons.Add(candidate);
+		AttachContinueLoadingGuard(candidate);
+	}
+
+	private void AttachContinueLoadingGuard(GameObject buttonObject)
+	{
+		if ((UnityObject)(object)buttonObject == (UnityObject)null || (UnityObject)(object)buttonObject.GetComponent<ContinueLoadButtonGuard>() != (UnityObject)null)
+		{
+			return;
+		}
+		buttonObject.AddComponent<ContinueLoadButtonGuard>();
 	}
 
 	private GameObject LocateContinueButton(GameObject interfaceObject)

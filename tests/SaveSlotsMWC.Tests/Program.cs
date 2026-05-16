@@ -177,12 +177,19 @@ static void PortedOriginalHidesContinueForEmptySavesAndLoading()
     var slotsManager = RunIlSpy(dll, "SaveSlots.SlotsManager");
     var saveSlots = RunIlSpy(dll, "SaveSlots.SaveSlots");
     var loadingBehaviour = RunIlSpy(dll, "SaveSlots.LoadingBehaviour");
+    var buttonSaves = RunIlSpy(dll, "SaveSlots.ButtonSaves");
+    var continueLoadButtonGuard = RunIlSpy(dll, "SaveSlots.ContinueLoadButtonGuard");
     AssertTrue(slotsManager.Contains("SetContinueVisible") && slotsManager.Contains("UpdateContinueButton"), "Continue visibility should go through one helper");
     AssertTrue(slotsManager.Contains("FindContinueButtons") && slotsManager.Contains("foreach (GameObject"), "all Continue button candidates should be updated, not only one cached object");
     AssertTrue(saveSlots.Contains("SetContinueRefreshEnabled"), "menu update should enable continuous Continue refresh");
+    AssertTrue(saveSlots.Contains("IsLoadingScreenActive") && saveSlots.Contains("NotifyLoadingStarted"), "Save Slots should track MWC loading before MSCLoader OnLoad fires");
+    AssertTrue(saveSlots.Contains("HideSaveSlotsUi") && (saveSlots.Contains("saveSlotsRaycaster.enabled = false") || saveSlots.Contains("((Behaviour)saveSlotsRaycaster).enabled = false")), "Save Slots canvas and raycaster should be hidden while the game is loading");
+    AssertTrue(saveSlots.Contains("SetContinueRefreshEnabled(!gameLoaded && !gameLoading)"), "Continue refresh must stop while the loading screen is active");
+    AssertTrue(buttonSaves.Contains("MenuInteractionBlocked"), "Saves button should ignore clicks while MWC is loading");
+    AssertTrue(slotsManager.Contains("ContinueLoadButtonGuard") && continueLoadButtonGuard.Contains("NotifyLoadingStarted"), "Continue click should immediately put Save Slots into loading mode");
     AssertTrue(slotsManager.Contains("RefreshContinueButtonFromSelectedSlot"), "clicking the current slot should refresh Continue from the selected profile state");
     AssertTrue(slotsManager.Contains("HideContinueButton"), "SlotsManager should expose a loading-safe Continue hide helper");
-    AssertTrue(loadingBehaviour.Contains("HideContinueButton"), "loading screen should hide the game Continue button as well as the Save Slots canvas");
+    AssertTrue(loadingBehaviour.Contains("NotifyLoadingStarted") && loadingBehaviour.Contains("HideContinueButton"), "loading screen should hide the game Continue button and notify SaveSlots before OnLoad");
 }
 
 static void PortedOriginalRefreshesContinueFromSelectedSlotEveryFrame()
@@ -207,7 +214,7 @@ static void PortedOriginalRefreshesContinueFromSelectedSlotEveryFrame()
     var refreshBody = slotsManager.Substring(refreshStart, refreshEnd - refreshStart);
     AssertFalse(refreshBody.Contains("DirectoryCopy") || refreshBody.Contains("DeleteProfileContents") || refreshBody.Contains("RestoreSelectedSlotToActiveProfile"), "per-frame Continue refresh must not copy, delete, or restore save files");
     AssertTrue(slotsManager.Contains("continueButtonCache") && slotsManager.Contains("nextContinueButtonSearchUtc"), "Continue button lookup should be cached instead of scanning every frame");
-    AssertTrue(saveSlots.Contains("SetContinueRefreshEnabled(!gameLoaded)") || saveSlots.Contains("SetContinueRefreshEnabled(value: !gameLoaded)"), "SaveSlots.Update should drive refresh even when the Save Slots canvas path is not running");
+    AssertTrue(saveSlots.Contains("SetContinueRefreshEnabled(!gameLoaded && !gameLoading)") || saveSlots.Contains("SetContinueRefreshEnabled(value: !gameLoaded && !gameLoading)"), "SaveSlots.Update should drive refresh while the menu is usable and stop it while MWC is loading");
 }
 
 static void PortedOriginalReconcilesActiveProfileWithSelectedSlot()

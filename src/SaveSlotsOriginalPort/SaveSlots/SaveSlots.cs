@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Net;
 using System.Reflection;
@@ -14,6 +15,8 @@ namespace SaveSlots
 {
 public class SaveSlots : Mod
 {
+	private static SaveSlots instance;
+
 	private GameObject prefabShutter;
 
 	private AudioSource shutter;
@@ -46,6 +49,12 @@ public class SaveSlots : Mod
 
 	private bool gameLoaded;
 
+	private bool gameLoading;
+
+	private readonly List<GameObject> loadingScreenObjects = new List<GameObject>();
+
+	private DateTime nextLoadingScreenSearchUtc = DateTime.MinValue;
+
 	private bool updateCheckInProgress;
 
 	private readonly object updateCheckLock = new object();
@@ -70,6 +79,7 @@ public class SaveSlots : Mod
 
 	public override void ModSetup()
 	{
+		instance = this;
 		SetupFunction(Setup.OnMenuLoad, OnMenuLoad);
 		SetupFunction(Setup.OnLoad, OnLoad);
 		SetupFunction(Setup.OnSave, OnSave);
@@ -77,6 +87,19 @@ public class SaveSlots : Mod
 		SetupFunction(Setup.OnModEnabled, OnModEnabled);
 		SetupFunction(Setup.OnModDisabled, OnModDisabled);
 		SetupFunction(Setup.ModSettings, Mod_Settings);
+	}
+
+	internal static void NotifyLoadingStarted()
+	{
+		if (instance != null)
+		{
+			instance.BeginLoadingMode();
+		}
+	}
+
+	internal static bool MenuInteractionBlocked()
+	{
+		return instance != null && instance.IsMenuInteractionBlocked();
 	}
 
 	private void Mod_Settings()
@@ -308,6 +331,7 @@ public class SaveSlots : Mod
 	public void OnMenuLoad()
 	{
 		gameLoaded = false;
+		gameLoading = false;
 		string path = Path.Combine(GetGameRoot(), "ModLoaderSettings.ini");
 		string text = "Mods";
 		if (File.Exists(path))
@@ -385,20 +409,9 @@ public class SaveSlots : Mod
 		{
 			return;
 		}
-		if (gameLoaded)
+		if (IsMenuInteractionBlocked())
 		{
-			if (saveSlotsCanvas.activeSelf)
-			{
-				saveSlotsCanvas.SetActive(false);
-			}
-			if (SlotsManager.Instance != null)
-			{
-				SlotsManager.Instance.HideContinueButton();
-			}
-			if ((UnityObject)(object)saveSlotsRaycaster != (UnityObject)null)
-			{
-				saveSlotsRaycaster.enabled = false;
-			}
+			HideSaveSlotsUi();
 			return;
 		}
 		if (SlotsManager.Instance != null)
@@ -469,6 +482,84 @@ public class SaveSlots : Mod
 		{
 			return false;
 		}
+	}
+
+	private bool IsMenuInteractionBlocked()
+	{
+		if (gameLoaded || gameLoading)
+		{
+			return true;
+		}
+		if (IsLoadingScreenActive())
+		{
+			BeginLoadingMode();
+			return true;
+		}
+		return false;
+	}
+
+	private void BeginLoadingMode()
+	{
+		gameLoading = true;
+		HideSaveSlotsUi();
+	}
+
+	private void HideSaveSlotsUi()
+	{
+		if (SlotsManager.Instance != null)
+		{
+			SlotsManager.Instance.HideContinueButton();
+		}
+		if ((UnityObject)(object)saveSlotsCanvas != (UnityObject)null && saveSlotsCanvas.activeSelf)
+		{
+			saveSlotsCanvas.SetActive(false);
+		}
+		if ((UnityObject)(object)saveSlotsRaycaster != (UnityObject)null)
+		{
+			saveSlotsRaycaster.enabled = false;
+		}
+	}
+
+	private bool IsLoadingScreenActive()
+	{
+		if (gameLoaded)
+		{
+			return false;
+		}
+		for (int i = loadingScreenObjects.Count - 1; i >= 0; i--)
+		{
+			GameObject loadingScreenObject = loadingScreenObjects[i];
+			if ((UnityObject)(object)loadingScreenObject == (UnityObject)null)
+			{
+				loadingScreenObjects.RemoveAt(i);
+			}
+			else if (loadingScreenObject.activeInHierarchy)
+			{
+				return true;
+			}
+		}
+		if (DateTime.UtcNow < nextLoadingScreenSearchUtc)
+		{
+			return false;
+		}
+		nextLoadingScreenSearchUtc = DateTime.UtcNow.AddMilliseconds(250.0);
+		GameObject[] objects = Resources.FindObjectsOfTypeAll<GameObject>();
+		foreach (GameObject gameObject in objects)
+		{
+			if ((UnityObject)(object)gameObject == (UnityObject)null || ((UnityObject)gameObject).name != "Loading")
+			{
+				continue;
+			}
+			if (!loadingScreenObjects.Contains(gameObject))
+			{
+				loadingScreenObjects.Add(gameObject);
+			}
+			if (gameObject.activeInHierarchy)
+			{
+				return true;
+			}
+		}
+		return false;
 	}
 
 	private void ApplyBlueTheme(GameObject root)
@@ -571,14 +662,8 @@ public class SaveSlots : Mod
 	public void OnLoad()
 	{
 		gameLoaded = true;
-		if (SlotsManager.Instance != null)
-		{
-			SlotsManager.Instance.HideContinueButton();
-		}
-		if ((UnityObject)(object)saveSlotsCanvas != (UnityObject)null)
-		{
-			saveSlotsCanvas.SetActive(false);
-		}
+		gameLoading = false;
+		HideSaveSlotsUi();
 		if ((UnityObject)(object)prefabShutter != (UnityObject)null)
 		{
 			shutter = UnityObject.Instantiate<GameObject>(prefabShutter).GetComponent<AudioSource>();
@@ -600,9 +685,13 @@ public class SaveSlots : Mod
 	public void Update()
 	{
 		ShowPendingUpdateMessage();
+		if (!gameLoaded && IsLoadingScreenActive())
+		{
+			BeginLoadingMode();
+		}
 		if (SlotsManager.Instance != null)
 		{
-			SlotsManager.Instance.SetContinueRefreshEnabled(!gameLoaded);
+			SlotsManager.Instance.SetContinueRefreshEnabled(!gameLoaded && !gameLoading);
 		}
 		UpdateMenuVisibility();
 		if (CreateScreenshotOnEachSave != null && !CreateScreenshotOnEachSave.GetValue() && screenshotKey != null && screenshotKey.GetKeybindDown())

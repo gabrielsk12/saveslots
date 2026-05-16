@@ -21,6 +21,11 @@ internal class ButtonSaves : MonoBehaviour
 		{
 			return;
 		}
+		if (SaveSlots.MenuInteractionBlocked())
+		{
+			saveUI.SetActive(false);
+			return;
+		}
 		saveUI.SetActive(!saveUI.activeSelf);
 		if (saveUI.activeSelf && SlotsManager.Instance != null)
 		{
