@@ -55,6 +55,8 @@ public class SaveSlots : Mod
 
 	private DateTime nextLoadingScreenSearchUtc = DateTime.MinValue;
 
+	private DateTime nextLoadingHeartbeatUtc = DateTime.MinValue;
+
 	private bool updateCheckInProgress;
 
 	private readonly object updateCheckLock = new object();
@@ -521,6 +523,7 @@ public class SaveSlots : Mod
 		if (!gameLoading)
 		{
 			SaveSlotsDiagnosticLog.Log("SaveSlots.BeginLoadingMode", "Entering loading mode.");
+			nextLoadingHeartbeatUtc = DateTime.MinValue;
 		}
 		gameLoading = true;
 		HideSaveSlotsUi();
@@ -605,6 +608,51 @@ public class SaveSlots : Mod
 			parent = parent.parent;
 		}
 		return path;
+	}
+
+	private void LogLoadingHeartbeat()
+	{
+		try
+		{
+			int loadingObjects = 0;
+			int activeLoadingObjects = 0;
+			string activeLoadingPath = "<none>";
+			for (int i = loadingScreenObjects.Count - 1; i >= 0; i--)
+			{
+				GameObject loadingScreenObject = loadingScreenObjects[i];
+				if ((UnityObject)(object)loadingScreenObject == (UnityObject)null)
+				{
+					loadingScreenObjects.RemoveAt(i);
+					continue;
+				}
+				loadingObjects++;
+				if (loadingScreenObject.activeInHierarchy)
+				{
+					activeLoadingObjects++;
+					activeLoadingPath = GetHierarchyPath(loadingScreenObject);
+				}
+			}
+			string message = "gameLoaded=" + gameLoaded
+				+ " gameLoading=" + gameLoading
+				+ " scene=" + Application.loadedLevelName + "(" + Application.loadedLevel + ")"
+				+ " realtime=" + Time.realtimeSinceStartup.ToString("0.00")
+				+ " canvasExists=" + ((UnityObject)(object)saveSlotsCanvas != (UnityObject)null)
+				+ " canvasActive=" + ((UnityObject)(object)saveSlotsCanvas != (UnityObject)null && saveSlotsCanvas.activeSelf)
+				+ " raycasterEnabled=" + ((UnityObject)(object)saveSlotsRaycaster != (UnityObject)null && saveSlotsRaycaster.enabled)
+				+ " loadingObjects=" + loadingObjects
+				+ " activeLoadingObjects=" + activeLoadingObjects
+				+ " activeLoadingPath=" + activeLoadingPath
+				+ " slotsManager=" + (SlotsManager.Instance != null);
+			SaveSlotsDiagnosticLog.Log("SaveSlots.LoadingHeartbeat", message);
+			if (SlotsManager.Instance != null)
+			{
+				SlotsManager.Instance.LogStateSnapshot("Loading heartbeat");
+			}
+		}
+		catch (Exception ex)
+		{
+			SaveSlotsDiagnosticLog.LogException("SaveSlots.LogLoadingHeartbeat failed", ex);
+		}
 	}
 
 	private void ApplyBlueTheme(GameObject root)
@@ -709,6 +757,7 @@ public class SaveSlots : Mod
 		SaveSlotsDiagnosticLog.Log("SaveSlots.OnLoad", "MSCLoader OnLoad fired. Game has loaded.");
 		gameLoaded = true;
 		gameLoading = false;
+		nextLoadingHeartbeatUtc = DateTime.MinValue;
 		HideSaveSlotsUi();
 		if ((UnityObject)(object)prefabShutter != (UnityObject)null)
 		{
@@ -735,6 +784,11 @@ public class SaveSlots : Mod
 		if (!gameLoaded && IsLoadingScreenActive())
 		{
 			BeginLoadingMode();
+		}
+		if (gameLoading && DateTime.UtcNow >= nextLoadingHeartbeatUtc)
+		{
+			nextLoadingHeartbeatUtc = DateTime.UtcNow.AddSeconds(1.0);
+			LogLoadingHeartbeat();
 		}
 		if (SlotsManager.Instance != null)
 		{

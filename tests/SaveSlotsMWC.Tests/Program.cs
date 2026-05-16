@@ -239,6 +239,9 @@ static void PortedOriginalWritesOwnDiagnosticLog()
     AssertTrue(saveSlots.Contains("SaveSlotsDiagnosticLog.Log") && slotsManager.Contains("SaveSlotsDiagnosticLog.Log"), "main menu and backend state transitions should be logged");
     AssertTrue(slotBehaviour.Contains("SaveSlotsDiagnosticLog.Log") && buttonSaves.Contains("SaveSlotsDiagnosticLog.Log") && continueGuard.Contains("SaveSlotsDiagnosticLog.Log"), "button and slot interactions should be logged");
     AssertTrue(slotsManager.Contains("LogStateSnapshot"), "backend logs should include slot/save state snapshots for debugging load hangs");
+    AssertTrue(saveSlots.Contains("LogLoadingHeartbeat") && saveSlots.Contains("nextLoadingHeartbeatUtc"), "loading mode should keep writing heartbeat diagnostics while MWC is stuck before OnLoad");
+    AssertTrue(saveSlots.Contains("Application.loadedLevelName") && saveSlots.Contains("Time.realtimeSinceStartup"), "loading heartbeat should include scene and runtime timing details");
+    AssertTrue(slotsManager.Contains("DescribeSaveTags") && slotsManager.Contains("ES2.GetTags") && slotsManager.Contains("DescribeDirectory"), "state snapshots should include save tags and profile folder shape");
     AssertTrue(logger.Contains("LogException"), "diagnostics should capture exceptions into the own log file");
 }
 

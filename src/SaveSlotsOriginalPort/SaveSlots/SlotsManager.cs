@@ -988,7 +988,7 @@ internal class SlotsManager : MonoBehaviour
 		return text.ToUpperInvariant();
 	}
 
-	private void LogStateSnapshot(string reason)
+	internal void LogStateSnapshot(string reason)
 	{
 		try
 		{
@@ -1005,17 +1005,83 @@ internal class SlotsManager : MonoBehaviour
 				+ " activeMetadata=" + (activeMetadata ?? "<none>")
 				+ " activePath=" + activePath
 				+ " activeSavefile=" + File.Exists(saveFile)
+				+ " activeSavefileInfo=" + DescribeFile(saveFile)
+				+ " activeSaveTags=" + DescribeSaveTags(saveFile)
 				+ " activeMetadataFile=" + File.Exists(metadataFile)
+				+ " activeMetadataInfo=" + DescribeFile(metadataFile)
 				+ " activeSlotMarker=" + LoadActiveSlotMarker()
-				+ " Save1=" + HasPlayableSave(slot1)
-				+ " Save2=" + HasPlayableSave(slot2)
-				+ " Save3=" + HasPlayableSave(slot3)
+				+ " Save1=" + HasPlayableSave(slot1) + "/" + DescribeDirectory(slot1)
+				+ " Save2=" + HasPlayableSave(slot2) + "/" + DescribeDirectory(slot2)
+				+ " Save3=" + HasPlayableSave(slot3) + "/" + DescribeDirectory(slot3)
+				+ " continueRefreshEnabled=" + continueRefreshEnabled
+				+ " continueCandidatesCached=" + continueButtonCache.Count
+				+ " lastContinueVisible=" + (lastContinueVisible.HasValue ? lastContinueVisible.Value.ToString() : "<unknown>")
 				+ " canvasExists=" + ((UnityObject)(object)Canvas() != (UnityObject)null);
 			SaveSlotsDiagnosticLog.Log("SlotsManager.LogStateSnapshot", message);
 		}
 		catch (Exception ex)
 		{
 			SaveSlotsDiagnosticLog.LogException("SlotsManager.LogStateSnapshot failed", ex);
+		}
+	}
+
+	private string DescribeFile(string path)
+	{
+		try
+		{
+			if (!File.Exists(path))
+			{
+				return "missing";
+			}
+			FileInfo fileInfo = new FileInfo(path);
+			return "bytes=" + fileInfo.Length + ",writeUtc=" + fileInfo.LastWriteTimeUtc.ToString("O");
+		}
+		catch (Exception ex)
+		{
+			SaveSlotsDiagnosticLog.LogException("SlotsManager.DescribeFile failed path=" + path, ex);
+			return "error";
+		}
+	}
+
+	private string DescribeDirectory(string path)
+	{
+		try
+		{
+			if (!Directory.Exists(path))
+			{
+				return "missing";
+			}
+			int fileCount = Directory.GetFiles(path, "*", SearchOption.AllDirectories).Length;
+			int directoryCount = Directory.GetDirectories(path, "*", SearchOption.AllDirectories).Length;
+			return "files=" + fileCount + ",dirs=" + directoryCount;
+		}
+		catch (Exception ex)
+		{
+			SaveSlotsDiagnosticLog.LogException("SlotsManager.DescribeDirectory failed path=" + path, ex);
+			return "error";
+		}
+	}
+
+	private string DescribeSaveTags(string saveFile)
+	{
+		try
+		{
+			if (!File.Exists(saveFile))
+			{
+				return "missing";
+			}
+			string[] tags = ES2.GetTags(saveFile);
+			if (tags == null)
+			{
+				return "null";
+			}
+			string[] sample = tags.Take(80).ToArray();
+			return "count=" + tags.Length + ",sample=" + string.Join("|", sample);
+		}
+		catch (Exception ex)
+		{
+			SaveSlotsDiagnosticLog.LogException("SlotsManager.DescribeSaveTags failed path=" + saveFile, ex);
+			return "error";
 		}
 	}
 
