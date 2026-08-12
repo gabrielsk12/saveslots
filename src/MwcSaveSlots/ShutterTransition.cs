@@ -166,10 +166,18 @@ internal sealed class ShutterTransition : MonoBehaviour
 		for (int i = 0; i < count; i++)
 		{
 			state = (1664525u * state) + 1013904223u;
-			float noise = ((state >> 8) & 65535u) / 32767.5f - 1f;
+			uint noiseBits = (state >> 8) & 65535u;
+			float noiseLevel = noiseBits / 32767.5f;
+			float noise = noiseLevel - 1f;
 			float time = i / (float)sampleRate;
 			float envelope = Mathf.Exp(-time * 11f);
-			float click = i < 1050 ? Mathf.Sin(i * .19f) * (1f - i / 1050f) : 0f;
+			float click = 0f;
+			if (i < 1050)
+			{
+				float clickWave = Mathf.Sin(i * .19f);
+				float clickProgress = i / 1050f;
+				click = clickWave * (1f - clickProgress);
+			}
 			float low = Mathf.Sin(time * 190f * Mathf.PI * 2f) * Mathf.Exp(-time * 18f);
 			samples[i] = ((noise * .16f) + (click * .42f) + (low * .18f)) * envelope;
 		}

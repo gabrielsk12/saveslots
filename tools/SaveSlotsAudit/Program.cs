@@ -23,27 +23,56 @@ internal static class Program
 
 	private static int Main(string[] args)
 	{
-		if (args.Length < 4)
-		{
-			Console.Error.WriteLine("Usage: SaveSlotsAudit <new SaveSlots.dll> <immutable old MWC SaveSlots.dll> <package directory> <MSC 1.1 reference DLL>");
-			return 2;
-		}
+		if (!HasRequiredArguments(args)) return 2;
+
 		string current = Path.GetFullPath(args[0]);
 		string reference = Path.GetFullPath(args[1]);
 		string package = Path.GetFullPath(args[2]);
 		string mscReference = Path.GetFullPath(args[3]);
+		VerifyPaths(current, reference, package, mscReference);
+		VerifyAssembly(current);
+		VerifyBinary(current, reference, mscReference);
+		VerifyPackage(package);
+		WriteSummary(current, reference, mscReference);
+		return 0;
+	}
+
+	private static bool HasRequiredArguments(string[] args)
+	{
+		if (args.Length >= 4) return true;
+		Console.Error.WriteLine("Usage: SaveSlotsAudit <new SaveSlots.dll> <immutable old MWC SaveSlots.dll> <package directory> <MSC 1.1 reference DLL>");
+		return false;
+	}
+
+	private static void VerifyPaths(string current, string reference, string package, string mscReference)
+	{
 		Require(File.Exists(current), "new DLL exists");
 		Require(File.Exists(reference), "reference DLL exists");
 		Require(Directory.Exists(package), "package directory exists");
 		Require(File.Exists(mscReference), "MSC 1.1 audit reference exists");
+	}
 
+	private static void VerifyAssembly(string current)
+	{
 		using FileStream stream = File.OpenRead(current);
 		using PEReader pe = new PEReader(stream);
 		Require(pe.HasMetadata, "new DLL has CLR metadata");
 		MetadataReader metadata = pe.GetMetadataReader();
+		VerifyIdentity(metadata);
+		VerifyResources(metadata);
+		VerifyTypes(metadata);
+		VerifyReferences(metadata);
+	}
+
+	private static void VerifyIdentity(MetadataReader metadata)
+	{
 		AssemblyDefinition assembly = metadata.GetAssemblyDefinition();
 		Require(metadata.GetString(assembly.Name) == "SaveSlots", "assembly name is SaveSlots");
 		Require(assembly.Version == new Version(4, 0, 0, 0), "assembly version is 4.0.0.0");
+	}
+
+	private static void VerifyResources(MetadataReader metadata)
+	{
 		Require(metadata.ManifestResources.Count == 4, "assembly contains only the two approved images and two credited sounds");
 		HashSet<string> resourceNames = new HashSet<string>(metadata.ManifestResources.Select(handle => metadata.GetString(metadata.GetManifestResource(handle).Name)), StringComparer.Ordinal);
 		Require(resourceNames.SetEquals(new[]
@@ -53,7 +82,10 @@ internal static class Program
 			"MwcSaveSlots.transition-camera.wav",
 			"MwcSaveSlots.ui-button-click.wav"
 		}), "embedded resources match the approved image and sound allowlist");
+	}
 
+	private static void VerifyTypes(MetadataReader metadata)
+	{
 		HashSet<string> types = new HashSet<string>(StringComparer.Ordinal);
 		foreach (TypeDefinitionHandle handle in metadata.TypeDefinitions)
 		{
@@ -73,7 +105,10 @@ internal static class Program
 			"MwcSaveSlots.UiSoundPlayer", "MwcSaveSlots.PlayerNameFormatter"
 		};
 		foreach (string type in requiredTypes) Require(types.Contains(type), "new architecture type exists: " + type);
+	}
 
+	private static void VerifyReferences(MetadataReader metadata)
+	{
 		HashSet<string> references = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 		Dictionary<string, AssemblyReferenceHandle> referenceHandles = new Dictionary<string, AssemblyReferenceHandle>(StringComparer.OrdinalIgnoreCase);
 		foreach (AssemblyReferenceHandle handle in metadata.AssemblyReferences)
@@ -94,7 +129,10 @@ internal static class Program
 			string token = Convert.ToHexString(metadata.GetBlobBytes(runtimeReference.PublicKeyOrToken));
 			Require(token.Equals("7CEC85D7BEA7798E", StringComparison.OrdinalIgnoreCase), framework + " targets the MWC Mono public key token");
 		}
+	}
 
+	private static void VerifyBinary(string current, string reference, string mscReference)
+	{
 		byte[] image = File.ReadAllBytes(current);
 		Require(Contains(image, "SaveSlotsMWC"), "mod ID string is present");
 		Require(Contains(image, "SAVE SLOTS"), "display name string is present");
@@ -109,7 +147,10 @@ internal static class Program
 		VerifyApprovedResources(current, reference, mscReference);
 		Require(!string.Equals(Hash(current), Hash(reference), StringComparison.OrdinalIgnoreCase), "new and reference hashes differ");
 		Require(!string.Equals(Hash(current), Hash(mscReference), StringComparison.OrdinalIgnoreCase), "new and MSC reference hashes differ");
+	}
 
+	private static void VerifyPackage(string package)
+	{
 		HashSet<string> allowed = new HashSet<string>(new[]
 		{
 			"SaveSlots.dll", "README.txt", "NEXUS_DESCRIPTION.txt", "ORIGINALITY_REPORT.txt", "CHANGELOG.txt"
@@ -117,12 +158,14 @@ internal static class Program
 		string[] files = Directory.GetFiles(package, "*", SearchOption.AllDirectories);
 		Require(files.Length == allowed.Count, "package has exactly five approved files");
 		foreach (string file in files) Require(allowed.Contains(Path.GetFileName(file)), "package file is approved: " + Path.GetFileName(file));
+	}
 
+	private static void WriteSummary(string current, string reference, string mscReference)
+	{
 		Console.WriteLine("PASS binary identity, MWC Mono compatibility, independent runtime UI, MSC asset exclusion, dependency, type, approved-resource provenance, hash, and package audit");
 		Console.WriteLine("new sha256=" + Hash(current));
 		Console.WriteLine("MWC v3 reference sha256=" + Hash(reference));
 		Console.WriteLine("MSC 1.1 audit reference sha256=" + Hash(mscReference));
-		return 0;
 	}
 
 	private static bool Contains(byte[] bytes, string text)
@@ -196,14 +239,12 @@ internal static class Program
 	private static string Hash(string path)
 	{
 		using FileStream stream = File.OpenRead(path);
-		using SHA256 sha = SHA256.Create();
-		return Convert.ToHexString(sha.ComputeHash(stream));
+		return Convert.ToHexString(SHA256.HashData(stream));
 	}
 
 	private static string Hash(byte[] bytes)
 	{
-		using SHA256 sha = SHA256.Create();
-		return Convert.ToHexString(sha.ComputeHash(bytes));
+		return Convert.ToHexString(SHA256.HashData(bytes));
 	}
 
 	private static void Require(bool condition, string statement)
