@@ -1,50 +1,26 @@
-[![CodeFactor](https://www.codefactor.io/repository/github/gabrielsk12/saveslots/badge)](https://www.codefactor.io/repository/github/gabrielsk12/saveslots)
-
 # Save Slots for My Winter Car
 
-Save Slots lets you use three different My Winter Car save profiles without manually copying, renaming, or moving save files.
+Save Slots gives you three save profiles and lets you switch between them from the My Winter Car main menu.
 
 ## Features
 
-- Three save profiles: Save1, Save2, and Save3.
-- A `SAVES` button on the My Winter Car main menu.
-- Screenshots and basic player information for every occupied slot.
-- Empty slots start a new game.
-- Existing saves are imported into Save1 on first installation.
-- Automatic backups before profile changes.
-- A recovery backup is created before deleting a save.
-- Shared or separate game options for each profile.
+- Three separate save slots
+- Save screenshots and player information
+- Automatic backups when switching or deleting a slot
+- Existing saves are imported into Save 1 on first use
+- Empty slots start a new game
 
 ## Install
 
-1. Download `SaveSlots.dll` from the [latest GitHub release](https://github.com/gabrielsk12/saveslots/releases/latest) or Nexus Mods.
-2. Copy `SaveSlots.dll` into the My Winter Car `Mods` folder.
-3. Start the game and select `SAVES` from the main menu.
+1. Download `SaveSlots.dll` from the [latest release](https://github.com/gabrielsk12/saveslots/releases/latest).
+2. Put it in your My Winter Car `Mods` folder.
 
-Do not install version 3 and version 4 at the same time. When upgrading, replace the old DLL but keep the `SaveSlotsMWC` folder.
+When updating from version 3, replace the old DLL and keep your `SaveSlotsMWC` folder.
 
-## Save locations
+Need help? [Open an issue](https://github.com/gabrielsk12/saveslots/issues) or contact `gabriel_sk` on Discord.
 
-Profiles and backups are stored under:
+## Origin and author
 
-```text
-AppData\LocalLow\Amistech\SaveSlotsMWC
-```
+Original My Summer Car Save Slots concept by Athlon007.
 
-Deleted-save recovery copies are stored under:
-
-```text
-AppData\LocalLow\Amistech\SaveSlotsMWC\EmergencyBackups\DeletedProfiles
-```
-
-## Version 4.0
-
-Version 4.0 rebuilds the mod for My Winter Car, improves the save screen, and strengthens switching, backup, deletion, and recovery behaviour. Existing Save1-Save3 profiles and settings remain compatible.
-
-See [CHANGELOG.md](CHANGELOG.md) for the player-facing changes and [ORIGINALITY_REPORT.md](ORIGINALITY_REPORT.md) for the detailed rewrite and asset audit.
-
-## Support
-
-If you find a bug or console error, create a [GitHub issue](https://github.com/gabrielsk12/saveslots/issues) or contact `gabriel_sk` on Discord.
-
-Made by Gabriel_SK.
+My Winter Car version and 4.0 rewrite by Gabriel_SK.
