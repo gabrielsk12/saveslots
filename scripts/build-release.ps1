@@ -66,9 +66,9 @@ if (Test-Path -LiteralPath $releaseDir)
 New-Item -ItemType Directory -Path $releaseDir | Out-Null
 Copy-Item -LiteralPath $distDll -Destination (Join-Path $releaseDir "SaveSlots.dll")
 Copy-Item -LiteralPath (Join-Path $projectRoot "README.md") -Destination (Join-Path $releaseDir "README.txt")
-Copy-Item -LiteralPath (Join-Path $projectRoot "NEXUS_DESCRIPTION.txt") -Destination (Join-Path $releaseDir "NEXUS_DESCRIPTION.txt")
 Copy-Item -LiteralPath (Join-Path $projectRoot "ORIGINALITY_REPORT.md") -Destination (Join-Path $releaseDir "ORIGINALITY_REPORT.txt")
 Copy-Item -LiteralPath (Join-Path $projectRoot "CHANGELOG.md") -Destination (Join-Path $releaseDir "CHANGELOG.txt")
+Copy-Item -LiteralPath (Join-Path $projectRoot "THIRD_PARTY_NOTICES.txt") -Destination (Join-Path $releaseDir "THIRD_PARTY_NOTICES.txt")
 
 if (Test-Path -LiteralPath $releaseZip) { Remove-Item -LiteralPath $releaseZip -Force }
 Compress-Archive -Path (Join-Path $releaseDir "*") -DestinationPath $releaseZip
