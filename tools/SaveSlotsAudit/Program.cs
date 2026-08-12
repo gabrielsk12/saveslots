@@ -153,7 +153,7 @@ internal static class Program
 	{
 		HashSet<string> allowed = new HashSet<string>(new[]
 		{
-			"SaveSlots.dll", "README.txt", "NEXUS_DESCRIPTION.txt", "ORIGINALITY_REPORT.txt", "CHANGELOG.txt"
+			"SaveSlots.dll", "README.txt", "ORIGINALITY_REPORT.txt", "CHANGELOG.txt", "THIRD_PARTY_NOTICES.txt"
 		}, StringComparer.OrdinalIgnoreCase);
 		string[] files = Directory.GetFiles(package, "*", SearchOption.AllDirectories);
 		Require(files.Length == allowed.Count, "package has exactly five approved files");
