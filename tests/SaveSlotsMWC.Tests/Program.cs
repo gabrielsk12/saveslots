@@ -1,555 +1,444 @@
-var tests = new List<(string Name, Action Body)>
+using System;
+using System.Collections.Generic;
+using System.IO;
+using MwcSaveSlots;
+
+internal static class Program
 {
-    ("built mod does not reference forbidden non-MSCLoader assemblies", BuiltModDoesNotReferenceForbiddenLoaders),
-    ("ported original SaveSlots DLL is MSCLoader-only", PortedOriginalSaveSlotsIsMSCLoaderOnly),
-    ("ported original initializes current empty slot on click", PortedOriginalInitializesCurrentEmptySlotOnClick),
-    ("ported original preserves existing saves on first install", PortedOriginalPreservesExistingSavesOnFirstInstall),
-    ("ported original keeps whole-folder safety backups", PortedOriginalKeepsWholeFolderSafetyBackups),
-    ("ported original reads My Winter Car save metadata", PortedOriginalReadsMyWinterCarSaveMetadata),
-    ("ported original switches saves without auto-loading", PortedOriginalSwitchesSavesWithoutAutoLoading),
-    ("ported original hides Continue for empty saves and loading", PortedOriginalHidesContinueForEmptySavesAndLoading),
-    ("ported original writes its own diagnostic log", PortedOriginalWritesOwnDiagnosticLog),
-    ("ported original refreshes Continue from selected slot every frame", PortedOriginalRefreshesContinueFromSelectedSlotEveryFrame),
-    ("ported original reconciles active profile with selected slot", PortedOriginalReconcilesActiveProfileWithSelectedSlot),
-    ("ported original controls the exact MWC Continue object", PortedOriginalControlsExactMwcContinueObject),
-    ("ported original keeps delete confirmation above save UI", PortedOriginalKeepsDeleteConfirmationAboveSaveUi),
-    ("ported original does not persist empty profile junk", PortedOriginalDoesNotPersistEmptyProfileJunk),
-    ("ported original deletes active and inactive profiles completely", PortedOriginalDeletesProfilesCompletely),
-    ("ported original applies MWC blue save slot theme", PortedOriginalAppliesBlueTheme),
-    ("ported original save slot UI remains visible and avoids MSCLoader menu overlay", PortedOriginalUiAvoidsModLoaderMenuOverlay),
-    ("ported original exposes GitHub release metadata safely", PortedOriginalExposesGitHubReleaseMetadataSafely),
-    ("ported original checks GitHub releases safely from settings", PortedOriginalChecksGitHubReleasesSafely),
-    ("ported original public branding is Gabriel_SK-only", PortedOriginalPublicBrandingIsGabrielOnly),
-    ("ported original keeps normal console logging quiet", PortedOriginalKeepsNormalConsoleLoggingQuiet),
-    ("ported original avoids shell execution and self-modifying update code", PortedOriginalAvoidsUnsafeUpdaterBehavior),
-    ("obsolete SaveSlotsMWC GUI mod is not built or shipped", ObsoleteGuiModIsNotBuiltOrShipped),
-};
+	private static int passed;
 
-var failures = 0;
-foreach (var test in tests)
-{
-    try
-    {
-        test.Body();
-        Console.WriteLine($"PASS {test.Name}");
-    }
-    catch (Exception ex)
-    {
-        failures++;
-        Console.WriteLine($"FAIL {test.Name}");
-        Console.WriteLine(ex);
-    }
-}
+	private static int Main()
+	{
+		Run("first install and all three profiles", FirstInstallAndProfiles);
+		Run("MWC menu keeps three distinct card positions", MenuLayoutHasDistinctCards);
+		Run("MWC first and last names are combined safely", PlayerNamesAreReadable);
+		Run("native SAVES entry follows MWC menu spacing", NativeMenuEntryUsesGameSpacing);
+		Run("nested data and editor backup filtering", NestedDataAndFiltering);
+		Run("synchronized and per-profile options", OptionModes);
+		Run("empty slot and delete flows", EmptyAndDelete);
+		Run("deletion backup failure preserves profile", DeletionBackupFailurePreservesProfile);
+		Run("deletion move failure restores profile", DeletionMoveFailureRestoresProfile);
+		Run("active deletion commit failure preserves playable save", ActiveDeletionFailurePreservesPlayableSave);
+		Run("deletion backups retain recent copies per slot", DeletionBackupRetention);
+		Run("copy-only legacy migration", LegacyMigration);
+		Run("emergency backup pruning", BackupPruning);
+		Run("interrupted swap recovery", InterruptedRecovery);
+		Run("interrupted stored-profile recovery", InterruptedProfileRecovery);
+		Run("delayed first-save capture gate", DelayedFirstSave);
+		Run("pending save receipt survives menu recreation", PendingSaveReceiptSurvivesReload);
+		Run("stage failure preserves active save", delegate { FailurePreservesPrevious(TransactionCheckpoint.StageCreated, 3); });
+		Run("stage copy failure preserves active save", delegate { FailurePreservesPrevious(TransactionCheckpoint.StageCopied, 3); });
+		Run("verification failure preserves active save", delegate { FailurePreservesPrevious(TransactionCheckpoint.StageVerified, 3); });
+		Run("backup failure preserves active save", delegate { FailurePreservesPrevious(TransactionCheckpoint.StageVerified, 2); });
+		Run("active move failure restores active save", delegate { FailurePreservesPrevious(TransactionCheckpoint.PreparedTargetMoved, 3); });
+		Run("marker commit failure restores active save", delegate { FailurePreservesPrevious(TransactionCheckpoint.MetadataCommitted, 1); });
+		Run("cleanup failure is nonfatal after commit", CleanupFailureIsNonfatal);
+		Console.WriteLine("PASS: " + passed + " backend scenarios");
+		return 0;
+	}
 
-return failures == 0 ? 0 : 1;
+	private static void FirstInstallAndProfiles()
+	{
+		using (Sandbox box = Sandbox.Create())
+		{
+			box.WriteActiveSave("FIRST");
+			ProfileRepository repository = box.Repository(null);
+			repository.Initialize(5, false);
+			Equal("FIRST", box.Read(Path.Combine(repository.SlotPath("Save1"), "savefile.txt")), "existing game was imported to Save1");
+			Equal("Save1", File.ReadAllText(repository.ActiveMarkerPath), "first marker");
+			ProfileOverview[] firstOverview = repository.ReadOverviews();
+			True(firstOverview.Length == 3, "all three save cards have backend state");
+			True(firstOverview[0].IsSelected && firstOverview[0].HasSave, "existing save is visible as selected Save1");
+			False(firstOverview[1].HasSave || firstOverview[2].HasSave, "unused Save2 and Save3 begin empty");
 
-static void BuiltModDoesNotReferenceForbiddenLoaders()
-{
-    var root = FindWorkspaceRoot();
-    var dll = Path.Combine(root, "dist", "SaveSlots.dll");
-    if (!File.Exists(dll))
-    {
-        throw new Exception("Build the mod before running this check: " + dll);
-    }
+			repository.SwitchTo(2, true, false, 5);
+			False(File.Exists(Path.Combine(box.Active, "savefile.txt")), "Save2 starts empty");
+			box.WriteActiveSave("SECOND");
+			repository.TryPersistActive("test", false);
+			repository.SwitchTo(3, true, false, 5);
+			box.WriteActiveSave("THIRD");
+			repository.TryPersistActive("test", false);
+			repository.SwitchTo(1, true, false, 5);
+			Equal("FIRST", box.Read(Path.Combine(box.Active, "savefile.txt")), "Save1 restored");
+			True(File.Exists(Path.Combine(repository.SlotPath("Save2"), "savefile.txt")), "Save2 stored");
+			True(File.Exists(Path.Combine(repository.SlotPath("Save3"), "savefile.txt")), "Save3 stored");
+		}
+	}
 
-    var bytes = File.ReadAllBytes(dll);
-    AssertFalse(ContainsAscii(bytes, "MWCLoader"), "mod DLL must not reference MWCLoader");
-    AssertFalse(ContainsAscii(bytes, "MelonLoader"), "mod DLL must not reference MelonLoader");
-    AssertFalse(ContainsAscii(bytes, "BepInEx"), "mod DLL must not reference BepInEx");
-    AssertFalse(ContainsAscii(bytes, "LightspeedModLoader"), "mod DLL must not reference LightspeedModLoader");
-    AssertTrue(ContainsAscii(bytes, "MSCLoader"), "mod DLL should reference MSCLoader");
-}
+	private static void MenuLayoutHasDistinctCards()
+	{
+		Equal("-416", MwcMenuLayout.CardX(0).ToString(System.Globalization.CultureInfo.InvariantCulture), "Save1 is on the left");
+		Equal("0", MwcMenuLayout.CardX(1).ToString(System.Globalization.CultureInfo.InvariantCulture), "Save2 is centered");
+		Equal("416", MwcMenuLayout.CardX(2).ToString(System.Globalization.CultureInfo.InvariantCulture), "Save3 is on the right");
+		True(MwcMenuLayout.CardWidth < MwcMenuLayout.CardSpacing, "card spacing prevents overlap");
+		True((MwcMenuLayout.CardSpacing * 2f) + MwcMenuLayout.CardWidth < MwcMenuLayout.FrameWidth, "all three cards fit inside the smaller frame");
+		True(MwcMenuLayout.MenuButtonOffsetX < 0f && MwcMenuLayout.MenuButtonOffsetY < 0f, "SAVES button stays inside the MWC menu bounds");
+	}
 
-static void PortedOriginalSaveSlotsIsMSCLoaderOnly()
-{
-    var root = FindWorkspaceRoot();
-    var dll = Path.Combine(root, "dist", "SaveSlots.dll");
-    if (!File.Exists(dll))
-    {
-        throw new Exception("Build the original SaveSlots port before running this check: " + dll);
-    }
+	private static void PlayerNamesAreReadable()
+	{
+		Equal("Gabriel Dodu", PlayerNameFormatter.Format(" Gabriel ", "Dodu", "OLD"), "first and last name are combined");
+		Equal("Marty McFly", PlayerNameFormatter.Format("Marty", "  McFly  ", ""), "outer whitespace is removed");
+		Equal("Biff Tannen", PlayerNameFormatter.Format("  Biff\t", "\r\nTannen ", ""), "whitespace is normalized");
+		Equal("Gabriel", PlayerNameFormatter.Format("Gabriel", "", ""), "a first name works alone");
+		Equal("Dodu", PlayerNameFormatter.Format("", "Dodu", ""), "a last name works alone");
+		Equal("Legacy Player", PlayerNameFormatter.Format("", "", " Legacy   Player "), "legacy name remains supported");
+		Equal("PLAYER", PlayerNameFormatter.Format("", "", ""), "empty metadata has a clear fallback");
+	}
 
-    var bytes = File.ReadAllBytes(dll);
-    AssertFalse(ContainsAscii(bytes, "MWCLoader"), "ported SaveSlots.dll must not reference MWCLoader");
-    AssertFalse(ContainsAscii(bytes, "MelonLoader"), "ported SaveSlots.dll must not reference MelonLoader");
-    AssertFalse(ContainsAscii(bytes, "BepInEx"), "ported SaveSlots.dll must not reference BepInEx");
-    AssertFalse(ContainsAscii(bytes, "LightspeedModLoader"), "ported SaveSlots.dll must not reference LightspeedModLoader");
-    AssertTrue(ContainsAscii(bytes, "MSCLoader"), "ported SaveSlots.dll should reference MSCLoader");
-    var decompiled = RunIlSpy(dll, "SaveSlots.SaveSlots");
-    AssertTrue(decompiled.Contains("ID => \"SaveSlotsMWC\""), "ported SaveSlots.dll should use the public MSCLoader mod ID SaveSlotsMWC");
-    AssertTrue(decompiled.Contains("SupportedGames => (Game)2") || decompiled.Contains("SupportedGames => Game.MyWinterCar"), "ported SaveSlots.dll should declare MyWinterCar support");
-}
+	private static void NativeMenuEntryUsesGameSpacing()
+	{
+		Equal("120", MwcMenuLayout.PreviousMenuCoordinate(100f, 80f).ToString(System.Globalization.CultureInfo.InvariantCulture), "entry continues the same vertical step before Continue");
+		Equal("42", MwcMenuLayout.PreviousMenuCoordinate(40f, 38f).ToString(System.Globalization.CultureInfo.InvariantCulture), "entry continues the game's horizontal menu alignment");
+	}
 
-static void PortedOriginalInitializesCurrentEmptySlotOnClick()
-{
-    var root = FindWorkspaceRoot();
-    var dll = Path.Combine(root, "dist", "SaveSlots.dll");
-    if (!File.Exists(dll))
-    {
-        throw new Exception("Build the original SaveSlots port before running this check: " + dll);
-    }
+	private static void NestedDataAndFiltering()
+	{
+		using (Sandbox box = Sandbox.Create())
+		{
+			box.WriteActiveSave("NESTED");
+			box.Write(Path.Combine(box.Active, "world", "vehicles", "state.bin"), "nested");
+			box.Write(Path.Combine(box.Active, "editor_backup", "ignored.bin"), "backup");
+			ProfileRepository repository = box.Repository(null);
+			repository.Initialize(5, false);
+			True(File.Exists(Path.Combine(repository.SlotPath("Save1"), "world", "vehicles", "state.bin")), "nested file copied");
+			False(Directory.Exists(Path.Combine(repository.SlotPath("Save1"), "editor_backup")), "_backup directory excluded");
+			repository.TryPersistActive("include backups", true);
+			True(File.Exists(Path.Combine(repository.SlotPath("Save1"), "editor_backup", "ignored.bin")), "_backup directory included when enabled");
+		}
+	}
 
-    var decompiled = RunIlSpy(dll, "SaveSlots.SlotsManager");
-    var slotBehaviour = RunIlSpy(dll, "SaveSlots.SlotBehaviour");
-    AssertTrue(decompiled.Contains("InitializeCurrentEmptySlot"), "clicking the current empty slot should initialize SaveSlots.xml instead of returning early");
-    var onClickStart = slotBehaviour.IndexOf("private void OnButtonClick()", StringComparison.Ordinal);
-    var onClickEnd = slotBehaviour.IndexOf("internal void SetColor", StringComparison.Ordinal);
-    AssertTrue(onClickStart >= 0 && onClickEnd > onClickStart, "decompiled SlotBehaviour should contain OnButtonClick");
-    var onClickBody = slotBehaviour.Substring(onClickStart, onClickEnd - onClickStart);
-    AssertTrue(onClickBody.Contains("SlotsManager.Instance.LoadSave(this);") && !onClickBody.Contains("if ("), "slot click should always enter LoadSave so the current empty slot can be initialized");
-}
+	private static void OptionModes()
+	{
+		using (Sandbox box = Sandbox.Create())
+		{
+			box.WriteActiveSave("ONE");
+			box.Write(Path.Combine(box.Active, "options.txt"), "OPTIONS-ONE");
+			ProfileRepository repository = box.Repository(null);
+			repository.Initialize(5, false);
+			box.Write(Path.Combine(repository.SlotPath("Save2"), "savefile.txt"), "TWO");
+			box.Write(Path.Combine(repository.SlotPath("Save2"), "options.txt"), "OPTIONS-TWO");
 
-static void PortedOriginalPreservesExistingSavesOnFirstInstall()
-{
-    var root = FindWorkspaceRoot();
-    var dll = Path.Combine(root, "dist", "SaveSlots.dll");
-    if (!File.Exists(dll))
-    {
-        throw new Exception("Build the original SaveSlots port before running this check: " + dll);
-    }
+			repository.SwitchTo(2, false, false, 5);
+			Equal("OPTIONS-TWO", box.Read(Path.Combine(box.Active, "options.txt")), "per-profile option retained");
+			repository.SwitchTo(1, true, false, 5);
+			Equal("OPTIONS-TWO", box.Read(Path.Combine(box.Active, "options.txt")), "shared options overlaid when synchronized");
 
-    var decompiled = RunIlSpy(dll, "SaveSlots.SlotsManager");
-    AssertTrue(decompiled.Contains("EnsureFirstInstallProfile"), "first install should create SaveSlots metadata for an existing active save");
-    AssertTrue(decompiled.Contains("HasActiveSaveData"), "first install should detect existing player save data before creating metadata");
-    AssertTrue(decompiled.Contains("Save1") && decompiled.Contains("DirectoryCopy(Application.persistentDataPath"), "first install profile creation should preserve the active player save in place");
-}
+			repository.SwitchTo(3, false, false, 5);
+			Equal("OPTIONS-TWO", box.Read(Path.Combine(box.Active, "options.txt")), "empty profile always receives shared options");
+		}
+	}
 
-static void PortedOriginalKeepsWholeFolderSafetyBackups()
-{
-    var root = FindWorkspaceRoot();
-    var dll = Path.Combine(root, "dist", "SaveSlots.dll");
-    if (!File.Exists(dll))
-    {
-        throw new Exception("Build the original SaveSlots port before running this check: " + dll);
-    }
+	private static void EmptyAndDelete()
+	{
+		using (Sandbox box = Sandbox.Create())
+		{
+			box.WriteActiveSave("ONE");
+			ProfileRepository repository = box.Repository(null);
+			repository.Initialize(5, false);
+			box.Write(Path.Combine(repository.SlotPath("Save2"), "savefile.txt"), "TWO");
+			string inactiveBackup = repository.DeleteProfile(2, false, 5);
+			False(Directory.Exists(repository.SlotPath("Save2")), "inactive profile deleted");
+			True(Directory.Exists(inactiveBackup), "inactive deletion backup retained");
+			Equal("TWO", box.Read(Path.Combine(inactiveBackup, "savefile.txt")), "inactive deletion backup verified");
 
-    var decompiled = RunIlSpy(dll, "SaveSlots.SlotsManager");
-    AssertTrue(decompiled.Contains("NormalizeSlotName"), "SaveSlots.xml slot names should be normalized before they become folder paths");
-    AssertTrue(decompiled.Contains("DirectoryCopy") && decompiled.Contains("copySubDirs: true"), "save switching should copy complete folder trees, not just defaultES2File.txt");
-    AssertTrue(decompiled.Contains("EmergencyBackups") && decompiled.Contains("PruneEmergencyBackups"), "emergency backups should be retained in one managed folder instead of spamming the save root");
-    AssertTrue(decompiled.Contains("MigrateLegacyRootBackups"), "old timestamped root backup folders should be migrated into managed emergency backups");
-}
+			string activeBackup = repository.DeleteProfile(1, false, 5);
+			False(File.Exists(Path.Combine(box.Active, "savefile.txt")), "active profile becomes empty");
+			False(Directory.Exists(repository.SlotPath("Save1")), "active stored profile deleted");
+			True(Directory.Exists(repository.ImmediateBackupRoot), "playable backup retained");
+			Equal("ONE", box.Read(Path.Combine(activeBackup, "savefile.txt")), "active deletion backup contains current playable data");
+		}
+	}
 
-static void PortedOriginalReadsMyWinterCarSaveMetadata()
-{
-    var root = FindWorkspaceRoot();
-    var dll = Path.Combine(root, "dist", "SaveSlots.dll");
-    if (!File.Exists(dll))
-    {
-        throw new Exception("Build the original SaveSlots port before running this check: " + dll);
-    }
+	private static void DeletionBackupFailurePreservesProfile()
+	{
+		using (Sandbox box = Sandbox.Create())
+		{
+			FailureGate gate = new FailureGate();
+			ProfileRepository repository = box.Repository(gate.Visit);
+			box.WriteActiveSave("ONE");
+			repository.Initialize(5, false);
+			box.Write(Path.Combine(repository.SlotPath("Save2"), "savefile.txt"), "TWO");
+			gate.Arm(TransactionCheckpoint.StageVerified, 1);
+			Throws(delegate { repository.DeleteProfile(2, false, 5); }, "injected deletion backup failure");
+			Equal("TWO", box.Read(Path.Combine(repository.SlotPath("Save2"), "savefile.txt")), "profile remains after backup failure");
+			True(repository.SafeModeActive, "backup failure activates safe mode");
+		}
+	}
 
-    var slotsManager = RunIlSpy(dll, "SaveSlots.SlotsManager");
-    var slotBehaviour = RunIlSpy(dll, "SaveSlots.SlotBehaviour");
-    AssertTrue(slotsManager.Contains("savefile.txt"), "Continue visibility should use My Winter Car savefile.txt");
-    AssertTrue(slotBehaviour.Contains("savefile.txt"), "slot cards should read My Winter Car savefile.txt");
-    AssertTrue(slotBehaviour.Contains("PlayerMoney") && slotBehaviour.Contains("PlayerName") && slotBehaviour.Contains("PlayerTransform"), "slot cards should read MWC player money/name/location tags");
-    AssertFalse(slotBehaviour.Contains("defaultES2File.txt"), "slot cards should not depend on the old MSC defaultES2File.txt");
-}
+	private static void DeletionMoveFailureRestoresProfile()
+	{
+		using (Sandbox box = Sandbox.Create())
+		{
+			FailureGate gate = new FailureGate();
+			ProfileRepository repository = box.Repository(gate.Visit);
+			box.WriteActiveSave("ONE");
+			repository.Initialize(5, false);
+			box.Write(Path.Combine(repository.SlotPath("Save2"), "savefile.txt"), "TWO");
+			gate.Arm(TransactionCheckpoint.SourceMovedForDelete, 1);
+			Throws(delegate { repository.DeleteProfile(2, false, 5); }, "injected deletion move failure");
+			Equal("TWO", box.Read(Path.Combine(repository.SlotPath("Save2"), "savefile.txt")), "moved profile restored automatically");
+			True(Directory.GetDirectories(Path.Combine(repository.DeletedBackupsRoot, "Save2")).Length == 1, "verified deletion backup also remains");
+			True(repository.SafeModeActive, "move failure activates safe mode");
+		}
+	}
 
-static void PortedOriginalSwitchesSavesWithoutAutoLoading()
-{
-    var root = FindWorkspaceRoot();
-    var dll = Path.Combine(root, "dist", "SaveSlots.dll");
-    if (!File.Exists(dll))
-    {
-        throw new Exception("Build the original SaveSlots port before running this check: " + dll);
-    }
+	private static void ActiveDeletionFailurePreservesPlayableSave()
+	{
+		using (Sandbox box = Sandbox.Create())
+		{
+			FailureGate gate = new FailureGate();
+			ProfileRepository repository = box.Repository(gate.Visit);
+			box.WriteActiveSave("ACTIVE-ONE");
+			repository.Initialize(5, false);
+			gate.Arm(TransactionCheckpoint.MetadataCommitted, 1);
+			Throws(delegate { repository.DeleteProfile(1, false, 5); }, "injected active deletion commit failure");
+			Equal("ACTIVE-ONE", box.Read(Path.Combine(box.Active, "savefile.txt")), "active playable save restored");
+			Equal("Save1", repository.SelectedSlot(), "active marker restored");
+			True(Directory.GetDirectories(Path.Combine(repository.DeletedBackupsRoot, "Save1")).Length == 1, "active deletion backup remains recoverable");
+			True(repository.SafeModeActive, "active deletion failure activates safe mode");
+		}
+	}
 
-    var slotsManager = RunIlSpy(dll, "SaveSlots.SlotsManager");
-    var saveSlots = RunIlSpy(dll, "SaveSlots.SaveSlots");
-    AssertTrue(slotsManager.Contains("HasPlayableSave") && slotsManager.Contains("UpdateContinueButton"), "slot switching should still expose Continue when the selected slot has a save");
-    AssertTrue(slotsManager.Contains("isSwitchingSave"), "slot switching should be reentrancy guarded to avoid duplicate backup spam");
-    AssertFalse(slotsManager.Contains("StartGameFromContinue"), "selecting a save should not auto-click Continue");
-    AssertFalse(slotsManager.Contains("LoadingGameRequested"), "auto-load state should be removed so the Saves button cannot disappear from this path");
-    AssertFalse(slotsManager.Contains("onClick") && slotsManager.Contains("Invoke"), "slot switching should not invoke the Continue button");
-    AssertFalse(saveSlots.Contains("AutoLoadSelectedSave"), "settings should not contain the immediate-load option");
-    AssertFalse(saveSlots.Contains("Load selected save immediately"), "settings should not show the immediate-load label");
-}
+	private static void DeletionBackupRetention()
+	{
+		using (Sandbox box = Sandbox.Create())
+		{
+			box.WriteActiveSave("ONE");
+			ProfileRepository repository = box.Repository(null);
+			repository.Initialize(2, false);
+			for (int i = 0; i < 4; i++)
+			{
+				box.Write(Path.Combine(repository.SlotPath("Save2"), "savefile.txt"), "DELETE-" + i);
+				repository.DeleteProfile(2, false, 2);
+			}
+			string[] backups = Directory.GetDirectories(Path.Combine(repository.DeletedBackupsRoot, "Save2"));
+			True(backups.Length == 2, "retention keeps two deletion backups for Save2");
+			bool latestFound = false;
+			for (int i = 0; i < backups.Length; i++)
+			{
+				if (box.Read(Path.Combine(backups[i], "savefile.txt")) == "DELETE-3") latestFound = true;
+			}
+			True(latestFound, "newest deletion backup retained");
+		}
+	}
 
-static void PortedOriginalHidesContinueForEmptySavesAndLoading()
-{
-    var root = FindWorkspaceRoot();
-    var dll = Path.Combine(root, "dist", "SaveSlots.dll");
-    if (!File.Exists(dll))
-    {
-        throw new Exception("Build the original SaveSlots port before running this check: " + dll);
-    }
+	private static void LegacyMigration()
+	{
+		using (Sandbox box = Sandbox.Create())
+		{
+			string legacy = Path.Combine(box.Root, "SaveSlots", "Save2");
+			box.Write(Path.Combine(legacy, "savefile.txt"), "LEGACY");
+			box.Write(Path.Combine(box.Root, "SaveSlots", "Options", "options.txt"), "LEGACY-OPTIONS");
+			ProfileRepository repository = box.Repository(null);
+			repository.Initialize(5, false);
+			Equal("LEGACY", box.Read(Path.Combine(repository.SlotPath("Save2"), "savefile.txt")), "legacy profile copied");
+			Equal("LEGACY", box.Read(Path.Combine(legacy, "savefile.txt")), "legacy source retained");
+			Equal("LEGACY-OPTIONS", box.Read(Path.Combine(repository.OptionsRoot, "options.txt")), "legacy options copied");
+		}
+	}
 
-    var slotsManager = RunIlSpy(dll, "SaveSlots.SlotsManager");
-    var saveSlots = RunIlSpy(dll, "SaveSlots.SaveSlots");
-    var loadingBehaviour = RunIlSpy(dll, "SaveSlots.LoadingBehaviour");
-    var buttonSaves = RunIlSpy(dll, "SaveSlots.ButtonSaves");
-    AssertTrue(slotsManager.Contains("SetContinueVisible") && slotsManager.Contains("UpdateContinueButton"), "Continue visibility should go through one helper");
-    AssertTrue(slotsManager.Contains("FindContinueButtons") && slotsManager.Contains("foreach (GameObject"), "all Continue button candidates should be updated, not only one cached object");
-    AssertTrue(saveSlots.Contains("SetContinueRefreshEnabled"), "menu update should enable continuous Continue refresh");
-    AssertTrue(saveSlots.Contains("IsLoadingScreenActive") && saveSlots.Contains("NotifyLoadingStarted"), "Save Slots should track MWC loading before MSCLoader OnLoad fires");
-    AssertTrue(saveSlots.Contains("HideSaveSlotsUi") && (saveSlots.Contains("saveSlotsRaycaster.enabled = false") || saveSlots.Contains("((Behaviour)saveSlotsRaycaster).enabled = false")), "Save Slots canvas and raycaster should be hidden while the game is loading");
-    AssertTrue(saveSlots.Contains("SetContinueRefreshEnabled(!gameLoaded && !gameLoading)"), "Continue refresh must stop while the loading screen is active");
-    AssertTrue(buttonSaves.Contains("MenuInteractionBlocked"), "Saves button should ignore clicks while MWC is loading");
-    AssertFalse(slotsManager.Contains("ContinueLoadButtonGuard"), "Save Slots must not add runtime listeners to MWC's Continue button because that can interrupt the game's own loading FSM");
-    AssertFalse(saveSlots.Contains("SlotsManager.Instance.HideContinueButton();"), "loading mode should not deactivate the game Continue button after click; only Save Slots UI should be hidden");
-    AssertTrue(slotsManager.Contains("RefreshContinueButtonFromSelectedSlot"), "clicking the current slot should refresh Continue from the selected profile state");
-    AssertTrue(slotsManager.Contains("HideContinueButton"), "SlotsManager should expose a loading-safe Continue hide helper");
-    AssertTrue(loadingBehaviour.Contains("NotifyLoadingStarted") && !loadingBehaviour.Contains("HideContinueButton"), "loading screen should notify SaveSlots before OnLoad without touching MWC's own Continue button");
-}
+	private static void BackupPruning()
+	{
+		using (Sandbox box = Sandbox.Create())
+		{
+			box.WriteActiveSave("ONE");
+			ProfileRepository repository = box.Repository(null);
+			repository.Initialize(2, false);
+			for (int i = 0; i < 5; i++)
+			{
+				int target = (i % 2) + 2;
+				if (!File.Exists(Path.Combine(repository.SlotPath(ProfileRepository.SlotName(target)), "savefile.txt")))
+					box.Write(Path.Combine(repository.SlotPath(ProfileRepository.SlotName(target)), "savefile.txt"), "SLOT-" + target);
+				repository.SwitchTo(target, true, false, 2);
+			}
+			string[] emergencyFolders = Directory.GetDirectories(repository.EmergencyBackupsRoot);
+			int regularBackups = 0;
+			for (int i = 0; i < emergencyFolders.Length; i++)
+			{
+				if (!string.Equals(Path.GetFileName(emergencyFolders[i]), "DeletedProfiles", StringComparison.OrdinalIgnoreCase)) regularBackups++;
+			}
+			True(regularBackups <= 2, "rotating backups pruned");
+			True(File.Exists(Path.Combine(repository.ImmediateBackupRoot, "savefile.txt")), "immediate rollback retained");
+		}
+	}
 
-static void PortedOriginalRefreshesContinueFromSelectedSlotEveryFrame()
-{
-    var root = FindWorkspaceRoot();
-    var dll = Path.Combine(root, "dist", "SaveSlots.dll");
-    if (!File.Exists(dll))
-    {
-        throw new Exception("Build the original SaveSlots port before running this check: " + dll);
-    }
+	private static void InterruptedRecovery()
+	{
+		using (Sandbox box = Sandbox.Create())
+		{
+			string rollback = box.Active + ".mwcslots-rollback-interrupted";
+			box.Write(Path.Combine(rollback, "savefile.txt"), "RECOVERED");
+			ProfileRepository repository = box.Repository(null);
+			repository.Initialize(5, false);
+			Equal("RECOVERED", box.Read(Path.Combine(box.Active, "savefile.txt")), "rollback recovered");
+		}
+	}
 
-    var slotsManager = RunIlSpy(dll, "SaveSlots.SlotsManager");
-    var saveSlots = RunIlSpy(dll, "SaveSlots.SaveSlots");
-    AssertTrue(slotsManager.Contains("private void LateUpdate()") && slotsManager.Contains("RefreshContinueButtonFromSelectedSlot();"), "Continue visibility must be corrected every Unity frame after menu scripts can change it");
-    AssertTrue(slotsManager.Contains("ShouldShowContinueForSelectedSlot") && slotsManager.Contains("ActiveProfileMatchesSelectedSlot") && slotsManager.Contains("GetActiveProfileSlotName"), "Continue visibility should require the active MWC profile to match the selected slot");
-    AssertTrue(slotsManager.Contains("SetContinueVisible(ShouldShowContinueForSelectedSlot())"), "per-frame Continue refresh should only set visibility from selected slot state");
-    AssertFalse(slotsManager.Contains("UpdateContinueButton(HasPlayableSave"), "Continue updates should require the active profile metadata to match the selected slot, not only savefile.txt");
-    AssertFalse(slotsManager.Contains("if (continueRefreshEnabled == enabled)"), "SetContinueRefreshEnabled(true) must refresh every call because SlotsManager can live on an inactive canvas");
-    var refreshStart = slotsManager.IndexOf("internal void RefreshContinueButtonFromSelectedSlot()", StringComparison.Ordinal);
-    var refreshEnd = slotsManager.IndexOf("private bool ShouldShowContinueForSelectedSlot()", StringComparison.Ordinal);
-    AssertTrue(refreshStart >= 0 && refreshEnd > refreshStart, "decompiled SlotsManager should contain RefreshContinueButtonFromSelectedSlot body");
-    var refreshBody = slotsManager.Substring(refreshStart, refreshEnd - refreshStart);
-    AssertFalse(refreshBody.Contains("DirectoryCopy") || refreshBody.Contains("DeleteProfileContents") || refreshBody.Contains("RestoreSelectedSlotToActiveProfile"), "per-frame Continue refresh must not copy, delete, or restore save files");
-    AssertTrue(slotsManager.Contains("continueButtonCache") && slotsManager.Contains("nextContinueButtonSearchUtc"), "Continue button lookup should be cached instead of scanning every frame");
-    AssertTrue(saveSlots.Contains("SetContinueRefreshEnabled(!gameLoaded && !gameLoading)") || saveSlots.Contains("SetContinueRefreshEnabled(value: !gameLoaded && !gameLoading)"), "SaveSlots.Update should drive refresh while the menu is usable and stop it while MWC is loading");
-}
+	private static void DelayedFirstSave()
+	{
+		DelayedSaveGate gate = new DelayedSaveGate();
+		DateTime start = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+		gate.Schedule(start);
+		True(gate.Poll(start.AddMilliseconds(900), false) == DelayedSaveState.Waiting, "waits for file flush delay");
+		True(gate.Poll(start.AddSeconds(1.1), false) == DelayedSaveState.Waiting, "retries missing first save");
+		True(gate.Poll(start.AddSeconds(2), true) == DelayedSaveState.Ready, "captures once savefile appears");
+		True(gate.Poll(start.AddSeconds(3), true) == DelayedSaveState.Idle, "fires once");
+		gate.Schedule(start);
+		True(gate.Poll(start.AddSeconds(16), false) == DelayedSaveState.Expired, "bounded retry expires");
+	}
 
-static void PortedOriginalWritesOwnDiagnosticLog()
-{
-    var root = FindWorkspaceRoot();
-    var dll = Path.Combine(root, "dist", "SaveSlots.dll");
-    if (!File.Exists(dll))
-    {
-        throw new Exception("Build the original SaveSlots port before running this check: " + dll);
-    }
+	private static void PendingSaveReceiptSurvivesReload()
+	{
+		using (Sandbox box = Sandbox.Create())
+		{
+			string storage = Path.Combine(box.Root, "SaveSlotsMWC");
+			PendingSaveReceipt firstInstance = new PendingSaveReceipt(storage);
+			firstInstance.Mark("Save2");
+			True(firstInstance.Exists, "save callback leaves a durable receipt");
 
-    var logger = RunIlSpy(dll, "SaveSlots.SaveSlotsDiagnosticLog");
-    var saveSlots = RunIlSpy(dll, "SaveSlots.SaveSlots");
-    var slotsManager = RunIlSpy(dll, "SaveSlots.SlotsManager");
-    var slotBehaviour = RunIlSpy(dll, "SaveSlots.SlotBehaviour");
-    var buttonSaves = RunIlSpy(dll, "SaveSlots.ButtonSaves");
-    AssertTrue(logger.Contains("SaveSlotsDebug.log"), "diagnostics should write to a SaveSlots-owned log file");
-    AssertTrue(logger.Contains("AppendAllText") && logger.Contains("RotateIfNeeded"), "diagnostics should append to a file and rotate before it grows forever");
-    AssertTrue(logger.Contains("Application.persistentDataPath") && logger.Contains("SaveSlots"), "diagnostic log should live near Save Slots data, not in the console");
-    AssertTrue(saveSlots.Contains("SaveSlotsDiagnosticLog.Log") && slotsManager.Contains("SaveSlotsDiagnosticLog.Log"), "main menu and backend state transitions should be logged");
-    AssertTrue(slotBehaviour.Contains("SaveSlotsDiagnosticLog.Log") && buttonSaves.Contains("SaveSlotsDiagnosticLog.Log"), "button and slot interactions should be logged");
-    AssertTrue(slotsManager.Contains("LogStateSnapshot"), "backend logs should include slot/save state snapshots for debugging load hangs");
-    AssertTrue(saveSlots.Contains("LogLoadingHeartbeat") && saveSlots.Contains("nextLoadingHeartbeatUtc"), "loading mode should keep writing heartbeat diagnostics while MWC is stuck before OnLoad");
-    AssertTrue(saveSlots.Contains("Application.loadedLevelName") && saveSlots.Contains("Time.realtimeSinceStartup"), "loading heartbeat should include scene and runtime timing details");
-    AssertTrue(slotsManager.Contains("DescribeSaveTags") && slotsManager.Contains("ES2.GetTags") && slotsManager.Contains("DescribeDirectory"), "state snapshots should include save tags and profile folder shape");
-    AssertTrue(logger.Contains("LogException"), "diagnostics should capture exceptions into the own log file");
-}
+			PendingSaveReceipt menuInstance = new PendingSaveReceipt(storage);
+			Equal("Save2", menuInstance.ReadSlot(), "new menu instance reads the saved slot");
+			menuInstance.Mark("Save3");
+			Equal("Save3", firstInstance.ReadSlot(), "later save atomically replaces the receipt");
+			menuInstance.Clear();
+			False(firstInstance.Exists, "receipt clears only after persistence succeeds");
+		}
+	}
 
-static void PortedOriginalReconcilesActiveProfileWithSelectedSlot()
-{
-    var root = FindWorkspaceRoot();
-    var dll = Path.Combine(root, "dist", "SaveSlots.dll");
-    if (!File.Exists(dll))
-    {
-        throw new Exception("Build the original SaveSlots port before running this check: " + dll);
-    }
+	private static void InterruptedProfileRecovery()
+	{
+		using (Sandbox box = Sandbox.Create())
+		{
+			string storage = Path.Combine(box.Root, "SaveSlotsMWC");
+			string rollback = Path.Combine(storage, "Save2.rollback-interrupted");
+			box.Write(Path.Combine(rollback, "savefile.txt"), "PROFILE-RECOVERED");
+			box.Write(Path.Combine(storage, "Staging", "orphan", "partial.tmp"), "partial");
+			ProfileRepository repository = box.Repository(null);
+			repository.Initialize(5, false);
+			Equal("PROFILE-RECOVERED", box.Read(Path.Combine(repository.SlotPath("Save2"), "savefile.txt")), "stored slot rollback recovered");
+			False(Directory.Exists(Path.Combine(repository.StagingRoot, "orphan")), "orphan stage cleaned");
+		}
+	}
 
-    var slotsManager = RunIlSpy(dll, "SaveSlots.SlotsManager");
-    AssertTrue(slotsManager.Contains("ReconcileActiveProfileWithSelectedSlot"), "menu load should reconcile the active MWC profile with the selected SaveSlots profile");
-    AssertTrue(slotsManager.Contains("ActiveProfileMatchesSelectedSlot"), "Continue visibility should require the active profile metadata to match the selected slot");
-    AssertTrue(slotsManager.Contains("GetActiveProfileSlotName"), "slot switching should know which slot the current active profile really belongs to");
-    AssertFalse(slotsManager.Contains("return !Directory.Exists(selectedSlotPath) && HasPlayableSave(Application.persistentDataPath)"), "empty selected slots must not show Continue just because another active save exists");
-}
+	private static void FailurePreservesPrevious(TransactionCheckpoint target, int occurrence)
+	{
+		using (Sandbox box = Sandbox.Create())
+		{
+			FailureGate gate = new FailureGate();
+			ProfileRepository repository = box.Repository(gate.Visit);
+			box.WriteActiveSave("ACTIVE-PLAYABLE");
+			repository.Initialize(5, false);
+			box.Write(Path.Combine(repository.SlotPath("Save2"), "savefile.txt"), "REQUESTED");
+			gate.Arm(target, occurrence);
+			Throws(delegate { repository.SwitchTo(2, true, false, 5); }, "injected switch failure");
+			Equal("ACTIVE-PLAYABLE", box.Read(Path.Combine(box.Active, "savefile.txt")), "previous active content recovered");
+			Equal("Save1", repository.SelectedSlot(), "marker recovered");
+			True(repository.SafeModeActive, "safe mode enabled");
+			True(File.Exists(Path.Combine(repository.SlotPath("Save1"), "savefile.txt")), "stored previous profile remains playable");
+		}
+	}
 
-static void PortedOriginalControlsExactMwcContinueObject()
-{
-    var root = FindWorkspaceRoot();
-    var dll = Path.Combine(root, "dist", "SaveSlots.dll");
-    if (!File.Exists(dll))
-    {
-        throw new Exception("Build the original SaveSlots port before running this check: " + dll);
-    }
+	private static void CleanupFailureIsNonfatal()
+	{
+		using (Sandbox box = Sandbox.Create())
+		{
+			FailureGate gate = new FailureGate();
+			ProfileRepository repository = box.Repository(gate.Visit);
+			box.WriteActiveSave("ONE");
+			repository.Initialize(5, false);
+			box.Write(Path.Combine(repository.SlotPath("Save2"), "savefile.txt"), "TWO");
+			gate.Arm(TransactionCheckpoint.CleanupStarted, 1);
+			repository.SwitchTo(2, true, false, 5);
+			Equal("TWO", box.Read(Path.Combine(box.Active, "savefile.txt")), "commit survives cleanup callback");
+			False(repository.SafeModeActive, "cleanup issue does not activate safe mode");
+			True(File.Exists(Path.Combine(repository.ImmediateBackupRoot, "savefile.txt")), "previous playable save remains in the immediate backup");
+		}
+	}
 
-    var slotsManager = RunIlSpy(dll, "SaveSlots.SlotsManager");
-    AssertTrue(slotsManager.Contains("Buttons/ButtonContinue"), "Continue lookup should use MWC's exact Interface/Buttons/ButtonContinue path");
-    AssertTrue(slotsManager.Contains("return ((Component)val).gameObject") || slotsManager.Contains("return ((Component)continueTransform).gameObject"), "Continue visibility should set the exact ButtonContinue GameObject like the original MSC version");
-}
+	private static void Run(string name, Action test)
+	{
+		try
+		{
+			test();
+			passed++;
+			Console.WriteLine("ok  " + name);
+		}
+		catch (Exception ex)
+		{
+			Console.Error.WriteLine("FAIL " + name + Environment.NewLine + ex);
+			Environment.Exit(1);
+		}
+	}
 
-static void PortedOriginalKeepsDeleteConfirmationAboveSaveUi()
-{
-    var root = FindWorkspaceRoot();
-    var dll = Path.Combine(root, "dist", "SaveSlots.dll");
-    if (!File.Exists(dll))
-    {
-        throw new Exception("Build the original SaveSlots port before running this check: " + dll);
-    }
+	private static void True(bool value, string message) { if (!value) throw new Exception("Expected true: " + message); }
+	private static void False(bool value, string message) { if (value) throw new Exception("Expected false: " + message); }
+	private static void Equal(string expected, string actual, string message) { if (!string.Equals(expected, actual, StringComparison.Ordinal)) throw new Exception(message + ": expected [" + expected + "] actual [" + actual + "]"); }
+	private static void Throws(Action action, string message)
+	{
+		try { action(); }
+		catch (IOException) { return; }
+		throw new Exception("Expected IOException: " + message);
+	}
 
-    var deleteButton = RunIlSpy(dll, "SaveSlots.DeleteSaveButton");
-    var slotsManager = RunIlSpy(dll, "SaveSlots.SlotsManager");
-    AssertTrue(slotsManager.Contains("HideSaveSlotsCanvasForPrompt"), "SlotsManager should expose a helper to hide Save Slots before MSCLoader modal prompts");
-    AssertTrue(deleteButton.Contains("HideSaveSlotsCanvasForPrompt"), "delete confirmation should hide the Save Slots canvas before opening the confirmation modal");
-}
+	private sealed class FailureGate
+	{
+		private TransactionCheckpoint target;
+		private int occurrence;
+		private int seen;
+		private bool armed;
 
-static void PortedOriginalDoesNotPersistEmptyProfileJunk()
-{
-    var root = FindWorkspaceRoot();
-    var dll = Path.Combine(root, "dist", "SaveSlots.dll");
-    if (!File.Exists(dll))
-    {
-        throw new Exception("Build the original SaveSlots port before running this check: " + dll);
-    }
+		internal void Arm(TransactionCheckpoint value, int hit)
+		{
+			target = value;
+			occurrence = hit;
+			seen = 0;
+			armed = true;
+		}
 
-    var slotsManager = RunIlSpy(dll, "SaveSlots.SlotsManager");
-    AssertTrue(slotsManager.Contains("ActiveSlot.txt") && slotsManager.Contains("WriteActiveSlotMarker"), "selected empty slots should be remembered outside the active save folder");
-    AssertTrue(slotsManager.Contains("PersistActiveSaveIfChanged") && slotsManager.Contains("ReplaceSlotFolderFromActive"), "new game saves should be mirrored into the selected slot after savefile.txt appears");
-    AssertTrue(slotsManager.Contains("DeleteEmptySlotFolder") && slotsManager.Contains("DeleteProfileContents"), "empty slots should not keep Mods.txt, steam_autocloud.vdf, or SaveSlots.xml as fake saves");
-    AssertTrue(slotsManager.Contains("HasPlayableSave(Application.persistentDataPath)") && slotsManager.Contains("ActiveProfileMatchesSelectedSlot"), "Continue should be recalculated from the real active savefile.txt and active slot metadata");
-}
+		internal void Visit(TransactionCheckpoint value)
+		{
+			if (!armed || value != target) return;
+			seen++;
+			if (seen == occurrence) throw new IOException("Injected failure at " + value + " occurrence " + occurrence);
+		}
+	}
 
-static void PortedOriginalDeletesProfilesCompletely()
-{
-    var root = FindWorkspaceRoot();
-    var dll = Path.Combine(root, "dist", "SaveSlots.dll");
-    if (!File.Exists(dll))
-    {
-        throw new Exception("Build the original SaveSlots port before running this check: " + dll);
-    }
+	private sealed class Sandbox : IDisposable
+	{
+		internal string Root { get; private set; }
+		internal string Active { get; private set; }
 
-    var slotsManager = RunIlSpy(dll, "SaveSlots.SlotsManager");
-    var deleteButton = RunIlSpy(dll, "SaveSlots.DeleteSaveButton");
-    AssertTrue(slotsManager.Contains("DeleteCurrentActiveSlot"), "deleting the selected slot should clear the active profile instead of refusing");
-    AssertTrue(slotsManager.Contains("DeleteDirectorySafe") && slotsManager.Contains("DeleteFileSafe"), "delete should unlock and remove complete profile folders/files");
-    AssertTrue(slotsManager.Contains("MoveActiveSaveToEmergencyBackup") && slotsManager.Contains("CopyOptionsToActiveSave"), "deleting an active real save should keep an emergency backup and preserve shared options");
-    AssertFalse(deleteButton.Contains("Can't delete currently active save."), "current active slot should be deletable after confirmation");
-}
+		internal static Sandbox Create()
+		{
+			string root = Path.Combine(Path.GetTempPath(), "MwcSaveSlotsTests", Guid.NewGuid().ToString("N"));
+			Directory.CreateDirectory(root);
+			return new Sandbox { Root = root, Active = Path.Combine(root, "Default") };
+		}
 
-static void PortedOriginalAppliesBlueTheme()
-{
-    var root = FindWorkspaceRoot();
-    var dll = Path.Combine(root, "dist", "SaveSlots.dll");
-    if (!File.Exists(dll))
-    {
-        throw new Exception("Build the original SaveSlots port before running this check: " + dll);
-    }
+		internal ProfileRepository Repository(Action<TransactionCheckpoint> checkpoint)
+		{
+			return new ProfileRepository(Active, Root, delegate { }, checkpoint);
+		}
 
-    var saveSlots = RunIlSpy(dll, "SaveSlots.SaveSlots");
-    var slotsManager = RunIlSpy(dll, "SaveSlots.SlotsManager");
-    AssertTrue(saveSlots.Contains("ApplyBlueTheme"), "original UI prefab should be recolored to MWC blue at runtime");
-    AssertTrue(saveSlots.Contains("ApplyBlueTextTheme"), "yellow original UI text should be recolored to MWC blue at runtime");
-    AssertTrue(slotsManager.Contains("BlueActive") && slotsManager.Contains("BlueInactive"), "save slot active/inactive colors should be blue");
-}
+		internal void WriteActiveSave(string value)
+		{
+			Write(Path.Combine(Active, "savefile.txt"), value);
+		}
 
-static void PortedOriginalUiAvoidsModLoaderMenuOverlay()
-{
-    var root = FindWorkspaceRoot();
-    var dll = Path.Combine(root, "dist", "SaveSlots.dll");
-    if (!File.Exists(dll))
-    {
-        throw new Exception("Build the original SaveSlots port before running this check: " + dll);
-    }
+		internal void Write(string path, string value)
+		{
+			Directory.CreateDirectory(Path.GetDirectoryName(path));
+			File.WriteAllText(path, value);
+		}
 
-    var decompiled = RunIlSpy(dll, "SaveSlots.SaveSlots");
-    AssertTrue(decompiled.Contains("EnsureClickSupport"), "Save Slots canvas should install raycast/event-system support for clickable slot cards");
-    AssertTrue(decompiled.Contains("UpdateMenuVisibility") && decompiled.Contains("IsModLoaderMenuOpen"), "Save Slots canvas should respond to MSCLoader menu visibility");
-    AssertTrue(decompiled.Contains("SetActive(value: true)") || decompiled.Contains("SetActive(true)"), "Save Slots menu canvas should remain visible in the game main menu");
-    AssertTrue(decompiled.Contains("sortingOrder =") && decompiled.Contains("GraphicRaycaster") && decompiled.Contains("enabled = !flag"), "Save Slots should lower priority and disable raycasts while MSCLoader menu is open");
-}
+		internal string Read(string path) { return File.ReadAllText(path); }
 
-static void PortedOriginalExposesGitHubReleaseMetadataSafely()
-{
-    var root = FindWorkspaceRoot();
-    var dll = Path.Combine(root, "dist", "SaveSlots.dll");
-    if (!File.Exists(dll))
-    {
-        throw new Exception("Build the original SaveSlots port before running this check: " + dll);
-    }
-
-    var saveSlots = RunIlSpy(dll, "SaveSlots.SaveSlots");
-    var bytes = File.ReadAllBytes(dll);
-    AssertTrue(saveSlots.Contains("github.com/gabrielsk12/saveslots/releases"), "mod settings should point players to the new GitHub releases page");
-    AssertFalse(saveSlots.Contains("REPORT BUG") || saveSlots.Contains("OpenBugReport"), "native MSCLoader bug reports should come from MSCLoader metadata, not a custom settings button");
-    AssertTrue(saveSlots.Contains("gabriel_sk"), "mod settings should include the Discord contact");
-    AssertFalse(saveSlots.Contains("discord.com/users/gabriel_sk"), "Discord contact button should not open an invalid Discord user URL");
-    AssertFalse(saveSlots.Contains("Settings.AddButton(\"<color=#52D6FF>gabriel_sk</color>"), "Discord contact should not be a settings button");
-    AssertTrue(ContainsUtf16(bytes, "github.com/gabrielsk12/saveslots"), "compiled mod should contain the new repository link");
-}
-
-static void PortedOriginalChecksGitHubReleasesSafely()
-{
-    var root = FindWorkspaceRoot();
-    var dll = Path.Combine(root, "dist", "SaveSlots.dll");
-    if (!File.Exists(dll))
-    {
-        throw new Exception("Build the original SaveSlots port before running this check: " + dll);
-    }
-
-    var saveSlots = RunIlSpy(dll, "SaveSlots.SaveSlots");
-    var bytes = File.ReadAllBytes(dll);
-    AssertTrue(saveSlots.Contains("CHECK FOR UPDATES") && saveSlots.Contains("CheckForUpdates"), "settings should include a ModLoader button to check GitHub releases");
-    AssertTrue(saveSlots.Contains("api.github.com/repos/gabrielsk12/saveslots/releases"), "update check should read GitHub release metadata including beta releases");
-    AssertTrue(saveSlots.Contains("ThreadPool.QueueUserWorkItem"), "network update checks should not freeze the game menu thread");
-    AssertFalse(ContainsAscii(bytes, "DownloadFile"), "update check must not download or replace DLLs automatically");
-}
-
-static void PortedOriginalPublicBrandingIsGabrielOnly()
-{
-    var root = FindWorkspaceRoot();
-    var dll = Path.Combine(root, "dist", "SaveSlots.dll");
-    if (!File.Exists(dll))
-    {
-        throw new Exception("Build the original SaveSlots port before running this check: " + dll);
-    }
-
-    var decompiled = RunIlSpy(dll, "SaveSlots.SaveSlots");
-    AssertTrue(decompiled.Contains("V 1.0"), "changelog should include the public release label");
-    AssertTrue(decompiled.Contains("Mod published to Beta"), "changelog should mention the beta publishing state");
-    AssertFalse(decompiled.Contains("Existing player saves get a Save1 profile"), "settings changelog should stay short enough for MSCLoader's text renderer");
-    AssertFalse(decompiled.Contains("Athlon007"), "public mod branding should not mention Athlon007");
-    AssertFalse(decompiled.Contains("Original Save Slots 1.0.2"), "public changelog should not include the old original mod changelog");
-    AssertFalse(decompiled.Contains("â€¢"), "changelog should not contain mojibake bullet characters");
-}
-
-static void PortedOriginalKeepsNormalConsoleLoggingQuiet()
-{
-    var root = FindWorkspaceRoot();
-    var dll = Path.Combine(root, "dist", "SaveSlots.dll");
-    if (!File.Exists(dll))
-    {
-        throw new Exception("Build the original SaveSlots port before running this check: " + dll);
-    }
-
-    var slotsManager = RunIlSpy(dll, "SaveSlots.SlotsManager");
-    AssertFalse(slotsManager.Contains("Loading save \" + sender.SlotFileName"), "normal save switching should not log every slot click");
-    AssertFalse(slotsManager.Contains("[BACKUP] Archived previous emergency backup"), "normal emergency backup rotation should not spam the console");
-    AssertFalse(slotsManager.Contains("[BACKUP] Moved old root backup folder"), "legacy backup migration should stay quiet unless it fails");
-}
-
-static void PortedOriginalAvoidsUnsafeUpdaterBehavior()
-{
-    var root = FindWorkspaceRoot();
-    var dll = Path.Combine(root, "dist", "SaveSlots.dll");
-    if (!File.Exists(dll))
-    {
-        throw new Exception("Build the original SaveSlots port before running this check: " + dll);
-    }
-
-    var bytes = File.ReadAllBytes(dll);
-    AssertFalse(ContainsAscii(bytes, "ProcessStartInfo"), "public mod should not spawn external processes");
-    AssertFalse(ContainsAscii(bytes, "cmd.exe"), "public mod should not invoke cmd.exe");
-    AssertFalse(ContainsAscii(bytes, "powershell.exe"), "public mod should not invoke PowerShell");
-    AssertFalse(ContainsAscii(bytes, "System.IO.Compression.ZipFile"), "GitHub update support should not self-extract or replace DLLs inside the game");
-}
-
-static void ObsoleteGuiModIsNotBuiltOrShipped()
-{
-    var root = FindWorkspaceRoot();
-    var solution = File.ReadAllText(Path.Combine(root, "SaveSlotsMWC.sln"));
-    AssertFalse(solution.Contains("SaveSlotsMWC.Mod"), "solution should not build the obsolete immediate-mode GUI mod");
-    AssertFalse(solution.Contains("SaveSlotsMWC.Core"), "solution should not build the obsolete standalone save-slot core");
-    AssertFalse(File.Exists(Path.Combine(root, "dist", "SaveSlotsMWC.dll")), "dist should not contain the obsolete SaveSlotsMWC.dll");
-}
-
-static void AssertTrue(bool value, string message)
-{
-    if (!value) throw new Exception(message);
-}
-
-static void AssertFalse(bool value, string message)
-{
-    if (value) throw new Exception(message);
-}
-
-static string FindWorkspaceRoot()
-{
-    var directory = new DirectoryInfo(AppContext.BaseDirectory);
-    while (directory != null && !File.Exists(Path.Combine(directory.FullName, "SaveSlotsMWC.sln")))
-    {
-        directory = directory.Parent;
-    }
-
-    if (directory == null)
-    {
-        throw new Exception("Could not locate workspace root.");
-    }
-
-    return directory.FullName;
-}
-
-static bool ContainsAscii(byte[] haystack, string needle)
-{
-    var bytes = System.Text.Encoding.ASCII.GetBytes(needle);
-    for (var i = 0; i <= haystack.Length - bytes.Length; i++)
-    {
-        var match = true;
-        for (var j = 0; j < bytes.Length; j++)
-        {
-            if (haystack[i + j] != bytes[j])
-            {
-                match = false;
-                break;
-            }
-        }
-
-        if (match)
-        {
-            return true;
-        }
-    }
-
-    return false;
-}
-
-static bool ContainsUtf16(byte[] haystack, string needle)
-{
-    var bytes = System.Text.Encoding.Unicode.GetBytes(needle);
-    for (var i = 0; i <= haystack.Length - bytes.Length; i++)
-    {
-        var match = true;
-        for (var j = 0; j < bytes.Length; j++)
-        {
-            if (haystack[i + j] != bytes[j])
-            {
-                match = false;
-                break;
-            }
-        }
-
-        if (match)
-        {
-            return true;
-        }
-    }
-
-    return false;
-}
-
-static string RunIlSpy(string assemblyPath, string typeName)
-{
-    var startInfo = new System.Diagnostics.ProcessStartInfo
-    {
-        FileName = "dotnet",
-        RedirectStandardOutput = true,
-        RedirectStandardError = true,
-        UseShellExecute = false,
-    };
-    startInfo.ArgumentList.Add("ilspycmd");
-    startInfo.ArgumentList.Add("-t");
-    startInfo.ArgumentList.Add(typeName);
-    startInfo.ArgumentList.Add(assemblyPath);
-
-    using var process = System.Diagnostics.Process.Start(startInfo);
-    if (process == null)
-    {
-        throw new Exception("Could not start ilspycmd.");
-    }
-
-    var output = process.StandardOutput.ReadToEnd();
-    var error = process.StandardError.ReadToEnd();
-    process.WaitForExit();
-    if (process.ExitCode != 0)
-    {
-        throw new Exception("ilspycmd failed: " + error);
-    }
-
-    return output;
+		public void Dispose()
+		{
+			if (!Directory.Exists(Root)) return;
+			foreach (string file in Directory.GetFiles(Root, "*", SearchOption.AllDirectories)) File.SetAttributes(file, FileAttributes.Normal);
+			Directory.Delete(Root, true);
+		}
+	}
 }

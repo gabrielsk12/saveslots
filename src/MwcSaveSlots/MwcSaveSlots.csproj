@@ -1,0 +1,46 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net35</TargetFramework>
+    <LangVersion>7.3</LangVersion>
+    <AssemblyName>SaveSlots</AssemblyName>
+    <RootNamespace>MwcSaveSlots</RootNamespace>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <Nullable>disable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+	<NoStdLib>true</NoStdLib>
+	<DisableImplicitFrameworkReferences>true</DisableImplicitFrameworkReferences>
+	<AutomaticallyUseReferenceAssemblyPackages>false</AutomaticallyUseReferenceAssemblyPackages>
+	<DisableStandardFrameworkResolution>true</DisableStandardFrameworkResolution>
+    <DebugType>portable</DebugType>
+    <OutputPath>..\..\dist\</OutputPath>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+  </PropertyGroup>
+  <ItemGroup>
+	<Reference Include="mscorlib"><HintPath>$(MWCManagedDir)\mscorlib.dll</HintPath><Private>false</Private></Reference>
+	<Reference Include="System"><HintPath>$(MWCManagedDir)\System.dll</HintPath><Private>false</Private></Reference>
+	<Reference Include="System.Core"><HintPath>$(MWCManagedDir)\System.Core.dll</HintPath><Private>false</Private></Reference>
+	<Reference Include="System.Xml"><HintPath>$(MWCManagedDir)\System.Xml.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="MSCLoader"><HintPath>$(MWCManagedDir)\MSCLoader.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine"><HintPath>$(MWCManagedDir)\UnityEngine.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine.UI"><HintPath>$(MWCManagedDir)\UnityEngine.UI.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="ES2"><HintPath>$(MWCManagedDir)\ES2.dll</HintPath><Private>false</Private></Reference>
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Assets\logo.png">
+      <LogicalName>MwcSaveSlots.logo.png</LogicalName>
+    </EmbeddedResource>
+	<EmbeddedResource Include="Assets\fallback-thumbnail.png">
+	  <LogicalName>MwcSaveSlots.fallback-thumbnail.png</LogicalName>
+	</EmbeddedResource>
+	<EmbeddedResource Include="Assets\transition-camera.wav">
+	  <LogicalName>MwcSaveSlots.transition-camera.wav</LogicalName>
+	</EmbeddedResource>
+	<EmbeddedResource Include="Assets\ui-button-click.wav">
+	  <LogicalName>MwcSaveSlots.ui-button-click.wav</LogicalName>
+	</EmbeddedResource>
+  </ItemGroup>
+  <Target Name="ValidateMwcManagedDir" BeforeTargets="ResolveReferences"
+          Condition="'$(MWCManagedDir)' == '' Or !Exists('$(MWCManagedDir)\UnityEngine.dll')">
+    <Error Text="Set MWCManagedDir to My Winter Car's mywintercar_Data\Managed folder. Copy Directory.Build.props.example to Directory.Build.props or pass -p:MWCManagedDir=..." />
+  </Target>
+</Project>

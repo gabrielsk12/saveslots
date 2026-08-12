@@ -2,7 +2,17 @@
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net8.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <AssemblyName>SaveSlotsMWC.Tests</AssemblyName>
   </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\..\src\MwcSaveSlots\SnapshotTransaction.cs" Link="Backend\SnapshotTransaction.cs" />
+    <Compile Include="..\..\src\MwcSaveSlots\ProfileRepository.cs" Link="Backend\ProfileRepository.cs" />
+	<Compile Include="..\..\src\MwcSaveSlots\DelayedSaveGate.cs" Link="Backend\DelayedSaveGate.cs" />
+	<Compile Include="..\..\src\MwcSaveSlots\PendingSaveReceipt.cs" Link="Backend\PendingSaveReceipt.cs" />
+	<Compile Include="..\..\src\MwcSaveSlots\MwcMenuLayout.cs" Link="Ui\MwcMenuLayout.cs" />
+	<Compile Include="..\..\src\MwcSaveSlots\PlayerNameFormatter.cs" Link="Metadata\PlayerNameFormatter.cs" />
+  </ItemGroup>
 </Project>
