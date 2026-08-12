@@ -1,0 +1,12 @@
+THIRD-PARTY MEDIA
+
+transition-camera.wav
+Camera sound by irinairinafomicheva from Pixabay:
+https://pixabay.com/sound-effects/technology-camera-13695/
+
+ui-button-click.wav
+Button sound by DenielCZ from Pixabay:
+https://pixabay.com/sound-effects/immersivecontrol-button-click-sound-463065/
+
+Both sounds are used under the Pixabay Content License:
+https://pixabay.com/service/license-summary/

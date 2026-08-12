@@ -1,32 +1,20 @@
-[![CodeFactor](https://www.codefactor.io/repository/github/gabrielsk12/saveslots/badge)](https://www.codefactor.io/repository/github/gabrielsk12/saveslots)
 # Save Slots for My Winter Car
 
-This mod lets you switch between **3 different save slots** without manually copying, pasting, or renaming save files.
+This mod adds three save slots to My Winter Car. Choose a slot from `SAVES` on the main menu and play. The mod handles the save files and backups for you.
 
+Each slot shows a screenshot and basic information about the save. Your existing save is imported into Save 1 the first time you use the mod. Empty slots start a new game.
 
-- Automatic backup before loading another slot
-- Emergency backups are stored here if you screwed rally bad or accidently deleted your save:
+## Installation
 
-  ```txt
-  AppData\LocalLow\Amistech\SaveSlots\EmergencyBackups
-  ```
+1. Download `SaveSlots.dll` from the [latest release](https://github.com/gabrielsk12/saveslots/releases/latest).
+2. Put it in your My Winter Car `Mods` folder.
 
-- Save profiles are stored here:
+If you are updating from version 3, replace the old DLL but keep your `SaveSlotsMWC` folder.
 
-  ```txt
-  AppData\LocalLow\Amistech\SaveSlots
-  ```
+For help, [open an issue](https://github.com/gabrielsk12/saveslots/issues) or contact `gabriel_sk` on Discord.
 
-- If you already had a save before installing the mod, do not worry.  
-  The mod automatically creates a save profile from your current active save.
+## Credits
 
-## Install
+My Winter Car version made by Gabriel_SK.
 
-1. Download `SaveSlots.dll` from the latest GitHub release or from Nexus.
-2. Copy `SaveSlots.dll` into your mods folder.
-
-
-If you find a bug or console error or any other bug  contact me on Discord or create an issue on GitHub.
-
-**Discord:** `gabriel_sk`  
-**GitHub Issues:** [Create an issue](https://github.com/gabrielsk12/saveslots/issues?reload=1)
+Based on the original My Summer Car Save Slots idea by Athlon007.

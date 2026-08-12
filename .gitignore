@@ -2,10 +2,15 @@ bin/
 obj/
 dist/
 release/
+production/
+.obsolete/
 .refs/
+.installed-backups/
 *.user
 *.suo
+Directory.Build.props
 *.tmp
 *.log
 *.zip
 NEXUS_README.txt
+src/MwcSaveSlots/Assets/transition-camera.mp3
