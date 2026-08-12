@@ -29,7 +29,7 @@ public sealed class MwcSaveSlotsMod : Mod
 	public override string Name { get { return DisplayName; } }
 	public override string Author { get { return "Gabriel_SK"; } }
 	public override string Version { get { return ReleaseVersion; } }
-	public override string Description { get { return "Save slot manager for My Winter Car. Partially rebuilt for v4.0."; } }
+	public override string Description { get { return "Three save slots for My Winter Car."; } }
 	public override byte[] Icon { get { return MwcAssetCatalog.Logo; } }
 	public override Game SupportedGames { get { return Game.MyWinterCar; } }
 
@@ -86,6 +86,7 @@ public sealed class MwcSaveSlotsMod : Mod
 		Settings.AddHeader("CREDITS");
 		Settings.AddText("Made by: Gabriel_SK");
 		Settings.AddText("Camera transition sound: irinairinafomicheva / Pixabay");
+		Settings.AddText("Button sound: DenielCZ / Pixabay");
 		Settings.AddText("Discord: gabriel_sk");
 		Settings.AddText("");
 		Settings.AddHeader("CHANGELOG");

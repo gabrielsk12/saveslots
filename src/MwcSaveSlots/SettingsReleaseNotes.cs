@@ -5,22 +5,17 @@ namespace MwcSaveSlots
 internal static class SettingsReleaseNotes
 {
 	private const string Notes =
-		"### V 4.0 - Independent MWC Rebuild\n"
-		+ "- Rebuilt the mod around an independent MWC-specific codebase while keeping existing profiles and settings compatible.\n"
-		+ "- Added a native-looking SAVES entry and refreshed the three-profile menu.\n"
-		+ "- Strengthened switching, deletion backups, rollback, and safe-mode recovery.\n"
-		+ "- Improved profile information, thumbnails, performance, and diagnostics.\n"
-		+ "- Made the save screen clearer and added quiet camera and button feedback.\n"
-		+ "- Improved full player-name display, card readability, and native-style menu motion.\n"
-		+ "- Added the square ModLoader icon and a monochrome image for saves without screenshots.\n"
-		+ "### V 3.0 - Save Safety Update\n"
-		+ "- Added verified switching, emergency backups, rollback, and safe mode.\n"
-		+ "- Improved empty slots, Continue behaviour, thumbnails, and folder shortcuts.\n"
-		+ "### V 2.0 - MWC Compatibility Update\n"
-		+ "- Added Corris trim information and dedicated SaveSlotsMWC storage.\n"
-		+ "- Improved compatibility, menu behaviour, backups, and diagnostics.\n"
-		+ "### V 1.0 - Beta\n"
-		+ "- First My Winter Car release with three profiles, thumbnails, shared options, and emergency backups.\n";
+		"### 4.0.0\n"
+		+ "- Rebuilt Save Slots for My Winter Car.\n"
+		+ "- Updated the SAVES menu and made each slot easier to read.\n"
+		+ "- Improved backups and recovery if something goes wrong.\n"
+		+ "- Existing profiles and settings still work.\n"
+		+ "### 3.0.0\n"
+		+ "- Added safer profile switching and emergency backups.\n"
+		+ "### 2.0.0\n"
+		+ "- Added Corris trim information and the SaveSlotsMWC folder.\n"
+		+ "### 1.0.0\n"
+		+ "- First My Winter Car release.\n";
 
 	internal static string Build()
 	{
